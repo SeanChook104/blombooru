@@ -36,6 +36,14 @@ from ..utils.thumbnail_generator import generate_thumbnail
 
 router = APIRouter(prefix="/api/media", tags=["media"])
 
+def get_auto_tags_for_file_type(file_type: str) -> List[str]:
+    """Return automatic tags based on detected file type."""
+    if file_type == "video":
+        return ["animated", "video"]
+    if file_type == "gif":
+        return ["animated", "animated_gif"]
+    return []
+
 def update_tag_counts(db: Session, tag_ids: List[int]):
     """Update post counts for given tags"""
     if not tag_ids:
@@ -136,7 +144,7 @@ async def get_media_list(
         media_list = query.offset(offset).limit(limit).all()
         
         items = [MediaResponse.model_validate(m) for m in media_list]
-        
+
         return {
             "items": items,
             "total": total,
@@ -337,8 +345,9 @@ async def upload_media(
         )
         
         tag_ids_to_update = []
-        if tags:
-            tag_list = [t.strip() for t in tags.split() if t.strip()]
+        tag_list = [t.strip() for t in tags.split() if t.strip()]
+        tag_list.extend(get_auto_tags_for_file_type(metadata["file_type"]))
+        if tag_list:
             parsed_hints = None
             if category_hints:
                 try:
@@ -1027,8 +1036,9 @@ async def finalize_chunked_upload(
         )
 
         tag_ids_to_update = []
-        if tags:
-            tag_list = [t.strip() for t in tags.split() if t.strip()]
+        tag_list = [t.strip() for t in tags.split() if t.strip()]
+        tag_list.extend(get_auto_tags_for_file_type(metadata["file_type"]))
+        if tag_list:
             parsed_hints = None
             if category_hints:
                 try:

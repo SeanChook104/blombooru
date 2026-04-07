@@ -1267,6 +1267,21 @@ class BaseGallery {
         if (indicator) item.appendChild(indicator);
         item.appendChild(link);
 
+        // Media type badge (video duration / GIF label)
+        let mediaBadgeText = '';
+        if (media.file_type === 'gif') {
+            mediaBadgeText = 'GIF';
+        } else if (media.file_type === 'video' && media.duration) {
+            mediaBadgeText = this.formatDuration(media.duration);
+        }
+
+        if (mediaBadgeText) {
+            const mediaBadge = document.createElement('div');
+            mediaBadge.className = 'media-type-badge';
+            mediaBadge.textContent = mediaBadgeText;
+            item.appendChild(mediaBadge);
+        }
+
         if (media.is_shared) {
             const shareIcon = document.createElement('div');
             shareIcon.className = 'share-icon w-6 h-6 flex items-center justify-center p-0';
@@ -1284,6 +1299,24 @@ class BaseGallery {
         }
 
         return item;
+    }
+
+    formatDuration(totalSeconds) {
+        const secondsNum = Number(totalSeconds);
+        if (!Number.isFinite(secondsNum) || secondsNum <= 0) {
+            return '';
+        }
+
+        const total = Math.floor(secondsNum);
+        const hours = Math.floor(total / 3600);
+        const minutes = Math.floor((total % 3600) / 60);
+        const seconds = total % 60;
+
+        if (hours > 0) {
+            return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        return `${minutes}:${String(seconds).padStart(2, '0')}`;
     }
 
     // ==================== URL Helpers ====================

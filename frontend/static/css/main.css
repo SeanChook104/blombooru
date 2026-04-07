@@ -624,6 +624,22 @@ span.checked:hover {
     z-index: 5;
 }
 
+.media-type-badge {
+    position: absolute;
+    left: 0.25rem;
+    bottom: 0.25rem;
+    background: color-mix(in srgb, var(--black) 70%, transparent);
+    color: var(--primary-text);
+    font-size: 0.65rem;
+    line-height: 1;
+    font-weight: 700;
+    padding: 0.2rem 0.3rem;
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    z-index: 5;
+    pointer-events: none;
+    text-transform: uppercase;
+}
+
 /* Loading Spinner */
 @keyframes spin {
     0% {

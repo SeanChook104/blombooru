@@ -22,7 +22,7 @@ from ..utils.logger import logger
 from ..utils.media_helpers import get_unique_filename
 from ..utils.media_processor import calculate_file_hash, process_media_file
 from ..utils.thumbnail_generator import generate_thumbnail
-from .media import get_or_create_tags, update_tag_counts
+from .media import get_auto_tags_for_file_type, get_or_create_tags, update_tag_counts
 
 router = APIRouter(prefix="/api/booru-import", tags=["booru-import"])
 
@@ -182,6 +182,7 @@ async def download_and_import(
         final_rating = req.rating or post.rating
         final_source = req.source if req.source is not None else (post.source or post.booru_url)
         final_tags = req.tags if req.tags is not None else [t.name for t in post.tags]
+        auto_tags = get_auto_tags_for_file_type(metadata["file_type"])
 
         media = Media(
             filename=unique_filename,
@@ -200,7 +201,7 @@ async def download_and_import(
 
         # Handle tags
         tag_ids_to_update = []
-        if final_tags:
+        if final_tags or auto_tags:
             category_hints = None
             if req.auto_create_tags:
                 category_hints = req.category_hints or {}
@@ -208,7 +209,8 @@ async def download_and_import(
                     if t.name.lower() not in category_hints:
                         category_hints[t.name.lower()] = t.category
 
-            tag_list = [t.strip() for t in final_tags if t.strip()]
+            tag_list = [t.strip() for t in (final_tags or []) if t.strip()]
+            tag_list.extend(auto_tags)
             media.tags = get_or_create_tags(db, tag_list, category_hints=category_hints)
             tag_ids_to_update = [tag.id for tag in media.tags]
 

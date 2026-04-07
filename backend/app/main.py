@@ -186,6 +186,14 @@ async def media_page(request: Request, media_id: int, db: Session = Depends(get_
         "external_share_url": settings.EXTERNAL_SHARE_URL
     })
 
+@app.get("/canvas", response_class=HTMLResponse)
+async def canvas_page(request: Request):
+    """Media canvas editor page"""
+    return templates.TemplateResponse("canvas.html", {
+        "request": request,
+        "app_name": settings.APP_NAME
+    })
+
 @app.get("/shared/{share_uuid}", response_class=HTMLResponse)
 async def shared_page(request: Request, share_uuid: str, db: Session = Depends(get_db)):
     """Shared content page"""

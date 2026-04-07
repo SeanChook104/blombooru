@@ -8,6 +8,13 @@ class MediaViewer extends MediaViewerBase {
         this.tooltipHelper = null;
         this.ratingSelect = null;
         this.shareLanguageSelect = null;
+        this.abLoop = {
+            pointA: null,
+            pointB: null,
+            enabled: false,
+            gifStartMs: null,
+            gifTimer: null
+        };
 
         // WD Tagger settings
         this.wdTaggerSettings = {
@@ -195,6 +202,17 @@ class MediaViewer extends MediaViewerBase {
 
     renderMedia(media) {
         const container = this.el('media-container');
+        const controls = this.el('ab-loop-controls');
+        if (controls) {
+            controls.style.display = (media.file_type === 'video' || media.file_type === 'gif') ? 'flex' : 'none';
+        }
+
+        this.stopGifLoopTimer();
+        this.abLoop.pointA = null;
+        this.abLoop.pointB = null;
+        this.abLoop.enabled = false;
+        this.updateABLoopButtonText();
+
         if (media.file_type === 'video') {
             const video = document.createElement('video');
             video.controls = true;
@@ -206,6 +224,8 @@ class MediaViewer extends MediaViewerBase {
             source.type = media.mime_type;
 
             video.appendChild(source);
+            this.activeMediaElement = video;
+            video.addEventListener('timeupdate', () => this.applyABLoop());
 
             video.onerror = () => {
                 container.innerHTML = `
@@ -236,6 +256,8 @@ class MediaViewer extends MediaViewerBase {
             img.alt = media.filename;
             img.id = 'main-media-image';
             img.style.cursor = 'pointer';
+            this.activeMediaElement = img;
+            this.abLoop.gifStartMs = Date.now();
 
             img.onerror = () => {
                 img.src = '/static/images/no-thumbnail.png';
@@ -258,6 +280,63 @@ class MediaViewer extends MediaViewerBase {
 
         this.el('download-btn').href = `/api/media/${media.id}/file`;
         this.el('download-btn').download = media.filename;
+    }
+
+    getCurrentPlaybackTime() {
+        if (!this.currentMedia) return 0;
+        if (this.currentMedia.file_type === 'video' && this.activeMediaElement) {
+            return this.activeMediaElement.currentTime || 0;
+        }
+        if (this.currentMedia.file_type === 'gif') {
+            if (!this.abLoop.gifStartMs) this.abLoop.gifStartMs = Date.now();
+            return (Date.now() - this.abLoop.gifStartMs) / 1000;
+        }
+        return 0;
+    }
+
+    updateABLoopButtonText() {
+        const loopBtn = this.el('toggle-loop-btn');
+        if (loopBtn) {
+            loopBtn.textContent = this.abLoop.enabled ? 'Loop: On' : 'Loop: Off';
+        }
+    }
+
+    stopGifLoopTimer() {
+        if (this.abLoop.gifTimer) {
+            clearInterval(this.abLoop.gifTimer);
+            this.abLoop.gifTimer = null;
+        }
+    }
+
+    restartGif() {
+        if (!this.activeMediaElement || this.currentMedia?.file_type !== 'gif') return;
+        const baseSrc = `/api/media/${this.mediaId}/file`;
+        this.activeMediaElement.src = `${baseSrc}?abloop=${Date.now()}`;
+        this.abLoop.gifStartMs = Date.now();
+    }
+
+    applyABLoop() {
+        if (!this.abLoop.enabled || this.abLoop.pointA === null || this.abLoop.pointB === null) return;
+        if (!this.currentMedia) return;
+
+        if (this.currentMedia.file_type === 'video' && this.activeMediaElement) {
+            const v = this.activeMediaElement;
+            if (v.currentTime >= this.abLoop.pointB) {
+                v.currentTime = this.abLoop.pointA;
+                if (v.paused) v.play().catch(() => { });
+            }
+            return;
+        }
+
+        if (this.currentMedia.file_type === 'gif') {
+            this.stopGifLoopTimer();
+            this.abLoop.gifTimer = setInterval(() => {
+                const elapsed = this.getCurrentPlaybackTime();
+                if (elapsed >= this.abLoop.pointB) {
+                    this.restartGif();
+                }
+            }, 100);
+        }
     }
 
     setupTagInput() {
@@ -496,6 +575,38 @@ class MediaViewer extends MediaViewerBase {
 
         this.el('add-to-albums-btn')?.addEventListener('click', () => {
             this.addToAlbums();
+        });
+
+        this.el('set-a-btn')?.addEventListener('click', () => {
+            this.abLoop.pointA = this.getCurrentPlaybackTime();
+            if (this.abLoop.enabled) this.applyABLoop();
+        });
+
+        this.el('set-b-btn')?.addEventListener('click', () => {
+            this.abLoop.pointB = this.getCurrentPlaybackTime();
+            if (this.abLoop.pointA !== null && this.abLoop.pointB <= this.abLoop.pointA) {
+                this.abLoop.pointB = this.abLoop.pointA + 0.1;
+            }
+            if (this.abLoop.enabled) this.applyABLoop();
+        });
+
+        this.el('toggle-loop-btn')?.addEventListener('click', () => {
+            this.abLoop.enabled = !this.abLoop.enabled;
+            this.updateABLoopButtonText();
+
+            if (!this.abLoop.enabled) {
+                this.stopGifLoopTimer();
+                if (this.currentMedia?.file_type === 'video' && this.activeMediaElement) {
+                    this.activeMediaElement.loop = true;
+                }
+                return;
+            }
+
+            if (this.currentMedia?.file_type === 'video' && this.activeMediaElement) {
+                this.activeMediaElement.loop = false;
+            }
+
+            this.applyABLoop();
         });
     }
 
@@ -1721,6 +1832,7 @@ class MediaViewer extends MediaViewerBase {
 
     // Cleanup method
     destroy() {
+        this.stopGifLoopTimer();
         if (this.tooltipHelper) {
             this.tooltipHelper.destroy();
         }

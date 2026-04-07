@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% set show_footer = false %}
+
+{% block title %}Canvas - {{ app_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    #main-scroll { overflow: hidden !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="canvas-page" class="canvas-page">
+    <!-- Top toolbar -->
+    <div id="canvas-toolbar" class="canvas-toolbar">
+        <a href="/" class="btn px-3 py-1 text-xs flex items-center gap-1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            Back
+        </a>
+        <div class="flex items-center gap-2">
+            <button id="canvas-reset-view" class="btn px-3 py-1 text-xs">Reset View</button>
+            <button id="canvas-crop-toggle" class="btn px-3 py-1 text-xs">Crop</button>
+            <button id="canvas-delete-selected" class="btn-danger px-3 py-1 text-xs" style="display:none;">Delete</button>
+        </div>
+        <span id="canvas-zoom-label" class="text-secondary text-xs">100%</span>
+    </div>
+
+    <!-- Layer sidebar -->
+    <div id="layer-sidebar" class="layer-sidebar">
+        <div class="layer-sidebar-header">
+            <span class="text-xs font-bold">Layers</span>
+        </div>
+        <div id="layer-list" class="layer-list"></div>
+    </div>
+
+    <!-- Fabric.js canvas wrapper -->
+    <div id="canvas-wrapper" class="canvas-wrapper">
+        <canvas id="fabric-canvas"></canvas>
+    </div>
+
+    <!-- Video controls (floating, shown when video selected) -->
+    <div id="canvas-ab-controls" class="canvas-ab-controls" style="display:none;">
+        <input type="range" id="canvas-video-scrub" class="gif-scrub-bar" min="0" max="100" value="0" step="0.1">
+        <span id="canvas-video-time-label" class="text-xs text-secondary">00:00 / 00:00</span>
+        <button id="canvas-video-play-pause" class="btn px-2 py-1 text-xs">Pause</button>
+        <button id="canvas-video-mute-toggle" class="btn px-2 py-1 text-xs">Unmute</button>
+        <div class="canvas-control-separator"></div>
+        <button id="canvas-set-a" class="btn px-2 py-1 text-xs">Set A</button>
+        <span id="canvas-ab-label" class="text-xs text-secondary">A: -- B: --</span>
+        <button id="canvas-set-b" class="btn px-2 py-1 text-xs">Set B</button>
+        <button id="canvas-toggle-loop" class="btn px-2 py-1 text-xs">Loop: Off</button>
+    </div>
+
+    <!-- GIF scrub controls (floating, shown when gif selected) -->
+    <div id="canvas-gif-controls" class="canvas-gif-controls" style="display:none;">
+        <input type="range" id="canvas-gif-scrub" class="gif-scrub-bar" min="0" max="100" value="0">
+        <span id="canvas-gif-frame-label" class="text-xs text-secondary">0 / 0</span>
+        <button id="canvas-gif-play-pause" class="btn px-2 py-1 text-xs">Pause</button>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/fabric@6.9.1/dist/index.min.js"></script>
+<script type="module">
+    import { parseGIF, decompressFrames } from 'https://cdn.jsdelivr.net/npm/gifuct-js@2.1.2/+esm';
+    window.parseGIF = parseGIF;
+    window.decompressFrames = decompressFrames;
+    window.gifuctReady = true;
+    window.dispatchEvent(new Event('gifuct-ready'));
+</script>
+<script src="/static/js/canvas.js?v={{ cache_buster }}"></script>
+{% endblock %}

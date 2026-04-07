@@ -182,6 +182,11 @@ location='desktop') %}
             {{ t('gallery.delete_selected') }}
         </button>
         {% endif %}
+        {% if 'canvas' in buttons %}
+        <button id="bulk-canvas-btn" class="btn px-3 py-1">
+            Open in Canvas
+        </button>
+        {% endif %}
     </div>
 </div>
 {% endmacro %}

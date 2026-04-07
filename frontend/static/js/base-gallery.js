@@ -489,6 +489,21 @@ class BaseGallery {
         if (bulkManageTagsBtn) {
             bulkManageTagsBtn.addEventListener('click', () => this.openBulkManageTagsModal());
         }
+        const bulkCanvasBtn = document.getElementById('bulk-canvas-btn');
+        if (bulkCanvasBtn) {
+            bulkCanvasBtn.addEventListener('click', () => this.openInCanvas());
+        }
+    }
+
+    openInCanvas() {
+        if (!this.selectedItems.size) return;
+        if (this.selectedItems.size > 5) {
+            if (!confirm(`You are about to open ${this.selectedItems.size} items in Canvas. This may cause performance lag on some devices. Continue?`)) {
+                return;
+            }
+        }
+        const ids = Array.from(this.selectedItems).join(',');
+        window.location.href = `/canvas?ids=${ids}`;
     }
 
     initBulkManageTagsModal() {
@@ -589,9 +604,7 @@ class BaseGallery {
         }
     }
 
-    // New handler for smart Select All
     async handleSelectAll() {
-        if (!app.isAdminMode) return;
 
         const visibleItems = document.querySelectorAll('.gallery-item');
         const visibleIds = Array.from(visibleItems).map(item => parseInt(item.dataset.id));
@@ -618,9 +631,7 @@ class BaseGallery {
         }
     }
 
-    // New handler for smart Deselect All
     handleDeselectAll() {
-        if (!app.isAdminMode) return;
 
         const visibleItems = document.querySelectorAll('.gallery-item');
         const visibleIds = Array.from(visibleItems).map(item => parseInt(item.dataset.id));
@@ -724,6 +735,13 @@ class BaseGallery {
             count.textContent = this.selectedItems.size;
         }
 
+        const authOnlyBtns = ['bulk-delete-btn', 'bulk-album-btn', 'bulk-manage-tags-btn', 'bulk-remove-btn'];
+        const isAuth = app.isAdminMode;
+        authOnlyBtns.forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) btn.style.display = isAuth ? '' : 'none';
+        });
+
         this.updateSelectionModeClass();
     }
 
@@ -783,7 +801,6 @@ class BaseGallery {
     // ==================== Drag & Shift Selection ====================
 
     handleMouseDown(item, id) {
-        if (!app.isAdminMode) return;
         if (!this.isSelectionMode) return;
         this.dragStartItem = item;
         this.selectionSnapshot = new Set(this.selectedItems);
@@ -1102,47 +1119,41 @@ class BaseGallery {
         let checkbox = null;
         let indicator = null;
 
-        if (app.isAdminMode) {
-            checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = `select-checkbox ${checkboxClass}`;
-            checkbox.dataset.id = media.id;
-            checkbox.tabIndex = -1; // Not focusable
+        checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = `select-checkbox ${checkboxClass}`;
+        checkbox.dataset.id = media.id;
+        checkbox.tabIndex = -1;
 
-            // Custom visual indicator (the clickable circle)
-            indicator = document.createElement('div');
-            indicator.className = 'select-indicator';
-            indicator.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-            `;
+        indicator = document.createElement('div');
+        indicator.className = 'select-indicator';
+        indicator.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        `;
 
-            if (this.selectedItems.has(media.id)) {
-                checkbox.checked = true;
-                item.classList.add('selected');
-            }
-
-            indicator.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this.toggleItemSelection(item, media.id, e);
-            });
+        if (this.selectedItems.has(media.id)) {
+            checkbox.checked = true;
+            item.classList.add('selected');
         }
+
+        indicator.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggleItemSelection(item, media.id, e);
+        });
 
         // ==================== Drag Selection Events ====================
 
-        // Start drag on mousedown
-        if (app.isAdminMode) {
-            item.addEventListener('mousedown', (e) => {
-                if (e.button === 0) {
-                    if (this.isSelectionMode) {
-                        e.preventDefault();
-                        this.handleMouseDown(item, media.id);
-                    }
+        item.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                if (this.isSelectionMode) {
+                    e.preventDefault();
+                    this.handleMouseDown(item, media.id);
                 }
-            });
-        }
+            }
+        });
 
         // Continue drag on mouseenter
         item.addEventListener('mouseenter', (e) => {
@@ -1197,7 +1208,7 @@ class BaseGallery {
         link.appendChild(img);
 
         link.addEventListener('click', (e) => {
-            if (app.isAdminMode && this.isSelectionMode) {
+            if (this.isSelectionMode) {
                 e.preventDefault();
                 this.toggleItemSelection(item, media.id, e);
             }
@@ -1241,18 +1252,16 @@ class BaseGallery {
             }
         };
 
-        if (app.isAdminMode) {
-            item.addEventListener('touchstart', startLongPress, { passive: true });
-            item.addEventListener('touchend', endLongPress);
-            item.addEventListener('touchcancel', cancelLongPress);
-            item.addEventListener('touchmove', cancelLongPress, { passive: true });
+        item.addEventListener('touchstart', startLongPress, { passive: true });
+        item.addEventListener('touchend', endLongPress);
+        item.addEventListener('touchcancel', cancelLongPress);
+        item.addEventListener('touchmove', cancelLongPress, { passive: true });
 
-            item.addEventListener('contextmenu', (e) => {
-                if (longPressTriggered) {
-                    e.preventDefault();
-                }
-            });
-        }
+        item.addEventListener('contextmenu', (e) => {
+            if (longPressTriggered) {
+                e.preventDefault();
+            }
+        });
 
         // Tooltip
         if (this.tooltipHelper && media.tags && media.tags.length > 0) {

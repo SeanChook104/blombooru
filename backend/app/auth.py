@@ -171,3 +171,20 @@ def get_current_user_from_api_key(
         return None
     
     return verify_api_key(db, authorization)
+
+def require_admin_or_api_key(
+    current_user: Optional[User] = Depends(get_current_user),
+    admin_mode_active: bool = Depends(is_admin_mode),
+    api_user: Optional[User] = Depends(get_current_user_from_api_key),
+):
+    """Allow actions from admin-mode session or valid API key."""
+    if current_user and admin_mode_active:
+        return current_user
+
+    if api_user:
+        return api_user
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You need to be logged in as the admin or provide a valid API key"
+    )

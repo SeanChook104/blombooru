@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Blombooru Pixiv Importer",
+  "version": "0.1.0",
+  "description": "Send Pixiv artwork and bookmark pages to Blombooru.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.pixiv.net/*",
+    "https://i.pximg.net/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_title": "Blombooru Pixiv Importer",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.pixiv.net/*/artworks/*",
+        "https://www.pixiv.net/*/users/*/bookmarks/artworks*",
+        "https://www.pixiv.net/users/*/bookmarks/artworks*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

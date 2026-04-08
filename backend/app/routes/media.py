@@ -12,7 +12,7 @@ from PIL import Image
 from sqlalchemy import and_, desc, func, or_, text
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from ..auth import get_current_user, require_admin_mode
+from ..auth import require_admin_mode, require_admin_or_api_key
 from ..config import settings
 from ..utils.request_helpers import safe_error_detail
 from ..database import get_db
@@ -248,7 +248,7 @@ async def upload_media(
     album_ids: Optional[str] = Form(None),
     source: Optional[str] = Form(None),
     category_hints: Optional[str] = Form(None),
-    current_user: User = Depends(require_admin_mode),
+    current_user: User = Depends(require_admin_or_api_key),
     db: Session = Depends(get_db)
 ):
     """Upload new media"""
@@ -678,7 +678,7 @@ async def upload_archive_chunk(
     chunk_index: int = Form(...),
     total_chunks: int = Form(...),
     filename: str = Form(...),
-    current_user: User = Depends(require_admin_mode)
+    current_user: User = Depends(require_admin_or_api_key)
 ):
     """Receive a single chunk of an archive upload."""
     import re
@@ -714,7 +714,7 @@ async def upload_archive_chunk(
 @router.post("/extract-archive")
 async def extract_archive(
     upload_id: str = Form(...),
-    current_user: User = Depends(require_admin_mode)
+    current_user: User = Depends(require_admin_or_api_key)
 ):
     """Reassemble chunks and extract files from the archive.
 
@@ -842,7 +842,7 @@ async def extract_archive(
 async def get_archive_file(
     upload_id: str,
     file_id: int,
-    current_user: User = Depends(require_admin_mode)
+    current_user: User = Depends(require_admin_or_api_key)
 ):
     """Serve an individual extracted file from an archive session."""
     import re
@@ -868,7 +868,7 @@ async def get_archive_file(
 @router.delete("/archive-cleanup/{upload_id}")
 async def cleanup_archive(
     upload_id: str,
-    current_user: User = Depends(require_admin_mode)
+    current_user: User = Depends(require_admin_or_api_key)
 ):
     """Clean up extracted archive files after the frontend is done with them."""
     import re

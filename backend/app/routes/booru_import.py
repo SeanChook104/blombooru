@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import require_admin_mode
+from ..auth import require_admin_mode, require_admin_or_api_key
 from ..config import settings
 from ..utils.request_helpers import safe_error_detail
 from ..database import get_db
@@ -260,7 +260,7 @@ async def download_and_import(
 @router.get("/proxy-image")
 async def proxy_image(
     url: str, 
-    current_user: User = Depends(require_admin_mode),
+    current_user: User = Depends(require_admin_or_api_key),
     db: Session = Depends(get_db)
 ):
     """
@@ -274,7 +274,11 @@ async def proxy_image(
         if client:
             external_resp = client.session.get(url, stream=True, timeout=60)
         else:
-            external_resp = requests.get(url, stream=True, timeout=60, headers={"User-Agent": "Blombooru/1.0 (booru-import)"})
+            headers = {"User-Agent": "Blombooru/1.0 (booru-import)"}
+            if "i.pximg.net" in url:
+                # Pixiv CDN blocks many direct hotlinks without a Pixiv referer.
+                headers["Referer"] = "https://www.pixiv.net/"
+            external_resp = requests.get(url, stream=True, timeout=60, headers=headers)
             
         if external_resp.status_code == 403:
             raise HTTPException(status_code=403, detail="admin.media_management.booru_import.error_image_403")

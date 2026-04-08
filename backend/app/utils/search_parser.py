@@ -392,6 +392,23 @@ def apply_search_criteria(query: Query, parsed_query: Dict[str, Any], db: Sessio
             else:
                 query = query.filter(cond)
 
+    if 'artist' in meta:
+        for item in meta['artist']:
+            raw_val = item['value'].strip()
+            name_clean = raw_val.replace('_', ' ')
+            prefixed_val = f"artist:{raw_val}"
+            prefixed_clean = f"artist:{name_clean}"
+            cond = Media.tags.any(or_(
+                Tag.name.ilike(prefixed_val),
+                Tag.name.ilike(prefixed_clean),
+                and_(Tag.category == TagCategoryEnum.artist, Tag.name.ilike(raw_val)),
+                and_(Tag.category == TagCategoryEnum.artist, Tag.name.ilike(name_clean))
+            ))
+            if item['negated']:
+                query = query.filter(not_(cond))
+            else:
+                query = query.filter(cond)
+
     if 'md5' in meta:
         for item in meta['md5']:
             query = query.filter(Media.hash == item['value'].strip())

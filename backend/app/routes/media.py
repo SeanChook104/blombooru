@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import shutil
 import uuid
@@ -94,6 +95,44 @@ def get_or_create_tags(db: Session, tag_names: List[str], category_hints: Option
         tags.append(tag)
     
     return tags
+
+def _append_tags_to_existing_media(
+    db: Session,
+    existing: Media,
+    *,
+    tags_str: str,
+    source: Optional[str],
+    category_hints: Optional[str],
+) -> Media:
+    """Merge new tags into an existing media item (no file overwrite)."""
+    parsed_hints = None
+    if category_hints:
+        try:
+            parsed_hints = json.loads(category_hints)
+        except (json.JSONDecodeError, TypeError):
+            parsed_hints = None
+
+    incoming = [t.strip() for t in (tags_str or "").split() if t.strip()]
+    if incoming:
+        new_tags = get_or_create_tags(db, incoming, category_hints=parsed_hints)
+        existing_tag_ids = {t.id for t in existing.tags}
+        added_ids = []
+        for t in new_tags:
+            if t.id not in existing_tag_ids:
+                existing.tags.append(t)
+                added_ids.append(t.id)
+        if added_ids:
+            update_tag_counts(db, list(existing_tag_ids.union(set(added_ids))))
+
+    # Only set source if it's currently empty (don't override existing source)
+    if source and not existing.source:
+        existing.source = source
+
+    db.commit()
+    db.refresh(existing)
+    invalidate_media_cache()
+    invalidate_tag_cache()
+    return existing
 
 @router.get("/")
 @router.get("")
@@ -301,10 +340,14 @@ async def upload_media(
             # Only delete uploaded file if it was a new upload (not scanned)
             if not scanned_path and file_path.exists():
                 file_path.unlink(missing_ok=True)
-            raise HTTPException(
-                status_code=409, 
-                detail=f"Media already exists (duplicate of {existing.filename})"
+            existing = _append_tags_to_existing_media(
+                db,
+                existing,
+                tags_str=tags,
+                source=source,
+                category_hints=category_hints,
             )
+            return MediaResponse.model_validate(existing)
         
         metadata = process_media_file(file_path)
         logger.debug(f"Media processed: {metadata}")
@@ -409,6 +452,154 @@ async def upload_media(
             thumbnail_path.unlink(missing_ok=True)
             
         raise HTTPException(status_code=500, detail=safe_error_detail("Upload failed", e))
+
+@router.post("/ugoira-gif", response_model=MediaResponse)
+async def upload_ugoira_gif(
+    frames: List[UploadFile] = File(...),
+    delays: str = Form(...),  # JSON array of delay ms per frame
+    rating: RatingEnum = Form(RatingEnum.safe),
+    tags: str = Form(""),
+    album_ids: Optional[str] = Form(None),
+    source: Optional[str] = Form(None),
+    category_hints: Optional[str] = Form(None),
+    filename_base: Optional[str] = Form(None),
+    current_user: User = Depends(require_admin_or_api_key),
+    db: Session = Depends(get_db)
+):
+    """Upload Pixiv ugoira frames and convert to animated GIF."""
+    try:
+        if not frames:
+            raise HTTPException(status_code=400, detail="No frames provided")
+
+        try:
+            delay_list = json.loads(delays)
+            if not isinstance(delay_list, list) or len(delay_list) != len(frames):
+                raise ValueError("Delays length must match frames length")
+            delay_list = [max(1, int(d)) for d in delay_list]
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid delays payload")
+
+        pil_frames = []
+        for frame in frames:
+            contents = await frame.read()
+            if not contents:
+                continue
+            img = Image.open(io.BytesIO(contents)).convert("RGBA")
+            pil_frames.append(img)
+
+        if not pil_frames:
+            raise HTTPException(status_code=400, detail="No valid frame images provided")
+
+        base_name = sanitize_filename(filename_base or f"ugoira_{uuid.uuid4().hex[:8]}")
+        if not base_name:
+            base_name = f"ugoira_{uuid.uuid4().hex[:8]}"
+        unique_filename = get_unique_filename(settings.ORIGINAL_DIR, f"{base_name}.gif")
+        file_path = settings.ORIGINAL_DIR / unique_filename
+
+        pil_frames[0].save(
+            file_path,
+            format="GIF",
+            save_all=True,
+            append_images=pil_frames[1:],
+            duration=delay_list,
+            loop=0,
+            optimize=False,
+            disposal=2,
+        )
+
+        file_hash = calculate_file_hash(file_path)
+        existing = db.query(Media).filter(Media.hash == file_hash).first()
+        if existing:
+            file_path.unlink(missing_ok=True)
+            existing = _append_tags_to_existing_media(
+                db,
+                existing,
+                tags_str=tags,
+                source=source,
+                category_hints=category_hints,
+            )
+            return MediaResponse.model_validate(existing)
+
+        metadata = process_media_file(file_path)
+        thumbnail_name = Path(unique_filename).stem
+        thumbnail_filename = f"{thumbnail_name}.jpg"
+        thumbnail_path = settings.THUMBNAIL_DIR / thumbnail_filename
+
+        thumbnail_generated = generate_thumbnail(
+            file_path,
+            thumbnail_path,
+            metadata["file_type"]
+        )
+
+        relative_path = file_path.relative_to(settings.BASE_DIR)
+        relative_thumb = thumbnail_path.relative_to(settings.BASE_DIR) if thumbnail_generated else None
+
+        media = Media(
+            filename=unique_filename,
+            path=str(relative_path),
+            thumbnail_path=str(relative_thumb) if relative_thumb else None,
+            hash=file_hash,
+            file_type=metadata["file_type"],
+            mime_type=metadata["mime_type"],
+            file_size=metadata["file_size"],
+            width=metadata["width"],
+            height=metadata["height"],
+            duration=metadata["duration"],
+            rating=rating,
+            source=source if source else None,
+        )
+
+        tag_ids_to_update = []
+        tag_list = [t.strip() for t in tags.split() if t.strip()]
+        tag_list.extend(get_auto_tags_for_file_type(metadata["file_type"]))
+        if tag_list:
+            parsed_hints = None
+            if category_hints:
+                try:
+                    parsed_hints = json.loads(category_hints)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            media.tags = get_or_create_tags(db, tag_list, category_hints=parsed_hints)
+            tag_ids_to_update = [tag.id for tag in media.tags]
+
+        affected_album_ids = []
+        if album_ids:
+            try:
+                a_ids = [int(id_str.strip()) for id_str in album_ids.split(",") if id_str.strip().isdigit()]
+                if a_ids:
+                    albums = db.query(Album).filter(Album.id.in_(a_ids)).all()
+                    media.albums = albums
+                    affected_album_ids = [album.id for album in albums]
+            except Exception as e:
+                logger.error(f"Error parsing album_ids: {e}")
+
+        db.add(media)
+        db.commit()
+        db.refresh(media)
+
+        if tag_ids_to_update:
+            update_tag_counts(db, tag_ids_to_update)
+            db.commit()
+
+        if affected_album_ids:
+            for a_id in affected_album_ids:
+                update_album_last_modified(a_id, db)
+            db.commit()
+            invalidate_album_cache()
+
+        db.refresh(media)
+        invalidate_media_cache()
+        invalidate_tag_cache()
+        return MediaResponse.model_validate(media)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading ugoira gif: {e}", exc_info=True)
+        if 'file_path' in locals() and file_path.exists():
+            file_path.unlink(missing_ok=True)
+        if 'thumbnail_path' in locals() and thumbnail_path.exists():
+            thumbnail_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=safe_error_detail("Ugoira GIF upload failed", e))
 
 @router.patch("/{media_id}", response_model=MediaResponse)
 async def update_media(

@@ -804,6 +804,13 @@ span.checked:hover {
     border: 1px solid var(--border);
     padding: 0.35rem 0.75rem;
     backdrop-filter: blur(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.canvas-toolbar.hidden-by-inactivity {
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -8px);
 }
 
 .canvas-wrapper {

@@ -13,6 +13,9 @@ class CanvasEditor {
         this.selectedObject = null;
         this.sidebarVisible = false;
         this.sidebarHideTimer = null;
+        this.toolbarHideTimer = null;
+        this.toolbarIdleMs = 1800;
+        this.toolbarPinnedVisible = false;
 
         this.MIN_ZOOM = 0.02;
         this.MAX_ZOOM = 20;
@@ -25,6 +28,7 @@ class CanvasEditor {
         this.setupCanvasEvents();
         this.setupCropOnScale();
         this.setupToolbar();
+        this.setupToolbarAutohide();
         this.setupABLoopControls();
         this.setupGifControls();
         this.setupVideoScrubControls();
@@ -251,6 +255,44 @@ class CanvasEditor {
         document.getElementById('canvas-delete-selected')?.addEventListener('click', () => {
             this.deleteSelected();
         });
+    }
+
+    setupToolbarAutohide() {
+        const toolbar = document.getElementById('canvas-toolbar');
+        const page = document.getElementById('canvas-page');
+        if (!toolbar || !page) return;
+
+        const showToolbar = (sourceEvent = 'unknown') => {
+            toolbar.classList.remove('hidden-by-inactivity');
+            this.toolbarPinnedVisible = true;
+            clearTimeout(this.toolbarHideTimer);
+            this.toolbarHideTimer = setTimeout(() => {
+                this.toolbarPinnedVisible = false;
+                if (!toolbar.matches(':hover')) {
+                    toolbar.classList.add('hidden-by-inactivity');
+                }
+            }, this.toolbarIdleMs);
+        };
+
+        const activityEvents = ['mousemove', 'mousedown', 'wheel', 'keydown', 'touchstart', 'touchmove'];
+        activityEvents.forEach((eventName) => {
+            window.addEventListener(eventName, () => showToolbar(eventName), { passive: true });
+        });
+
+        toolbar.addEventListener('mouseenter', () => {
+            toolbar.classList.remove('hidden-by-inactivity');
+            clearTimeout(this.toolbarHideTimer);
+        });
+
+        toolbar.addEventListener('mouseleave', () => {
+            if (!this.toolbarPinnedVisible) {
+                toolbar.classList.add('hidden-by-inactivity');
+            } else {
+                showToolbar('toolbar:mouseleave');
+            }
+        });
+
+        showToolbar('init');
     }
 
     // ==================== Load from Query Params ====================

@@ -19,7 +19,9 @@
       "matches": [
         "https://www.pixiv.net/*/artworks/*",
         "https://www.pixiv.net/*/users/*/bookmarks/artworks*",
-        "https://www.pixiv.net/users/*/bookmarks/artworks*"
+        "https://www.pixiv.net/users/*/bookmarks/artworks*",
+        "https://chan.sankakucomplex.com/*/posts*",
+        "https://chan.sankakucomplex.com/posts*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],

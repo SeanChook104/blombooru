@@ -1,3 +1,26 @@
+/**
+ * UUID v4 for upload session IDs. crypto.randomUUID() is only available in secure contexts
+ * (HTTPS / localhost), so plain HTTP (e.g. LAN IP) needs getRandomValues or a fallback.
+ */
+function randomUploadId() {
+    const c = typeof crypto !== 'undefined' && crypto;
+    if (c && typeof c.randomUUID === 'function') {
+        return c.randomUUID();
+    }
+    if (c && typeof c.getRandomValues === 'function') {
+        const buf = new Uint8Array(16);
+        c.getRandomValues(buf);
+        buf[6] = (buf[6] & 0x0f) | 0x40;
+        buf[8] = (buf[8] & 0x3f) | 0x80;
+        const h = [...buf].map((b) => b.toString(16).padStart(2, '0')).join('');
+        return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+        const n = (Math.random() * 16) | 0;
+        return (ch === 'x' ? n : (n & 0x3) | 0x8).toString(16);
+    });
+}
+
 class Uploader {
     constructor() {
         this.uploadArea = document.getElementById('upload-area');
@@ -574,7 +597,7 @@ class Uploader {
         try {
             const CHUNK_SIZE = 99 * 1024 * 1024; // 99MB per chunk
             const totalChunks = Math.ceil(archiveFile.size / CHUNK_SIZE);
-            const uploadId = crypto.randomUUID();
+            const uploadId = randomUploadId();
 
             // Upload chunks sequentially
             for (let i = 0; i < totalChunks; i++) {
@@ -878,7 +901,6 @@ class Uploader {
 
         const submitBtn = document.getElementById('submit-all-btn');
         const cancelBtn = document.getElementById('cancel-all-btn');
-        const originalText = submitBtn.textContent;
 
         submitBtn.disabled = true;
         cancelBtn.disabled = true;
@@ -976,7 +998,7 @@ class Uploader {
     async _uploadFileChunked(fileData, uniqueTags, allAlbumIds, chunkSize) {
         const file = fileData.file;
         const totalChunks = Math.ceil(file.size / chunkSize);
-        const uploadId = crypto.randomUUID();
+        const uploadId = randomUploadId();
 
         // Upload chunks sequentially
         for (let i = 0; i < totalChunks; i++) {
@@ -1076,6 +1098,18 @@ class Uploader {
 
         // Reset file input
         this.fileInput.value = '';
+
+        // submitAll() disables these and changes labels; restore so the next batch works without refresh
+        const submitBtn = document.getElementById('submit-all-btn');
+        const cancelBtnEl = document.getElementById('cancel-all-btn');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = window.i18n.t('upload.submit.submit_all');
+        }
+        if (cancelBtnEl) {
+            cancelBtnEl.disabled = false;
+            cancelBtnEl.textContent = window.i18n.t('upload.submit.cancel_all');
+        }
     }
 
     async addScannedFile(file, originalPath) {

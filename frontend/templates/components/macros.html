@@ -227,6 +227,28 @@ location='desktop') %}
 </div>
 {% endmacro %}
 
+{# Auto paging toggle (gallery list page) #}
+{% macro auto_paging_toggle(location='desktop') %}
+{% if location == 'mobile' %}
+<div class="surface p-3 mb-4 border block lg:hidden">
+    <label class="flex items-center gap-2 cursor-pointer text-xs">
+        <input type="checkbox" id="auto-paging-toggle-mobile" class="auto-paging-toggle-input">
+        <span>{{ t('gallery.auto_paging') }}</span>
+    </label>
+    <p class="text-secondary text-xs mt-1">{{ t('gallery.auto_paging_hint') }}</p>
+</div>
+{% else %}
+<div class="hidden lg:block mb-4">
+    <h3 class="text-sm font-bold mb-3 pb-1 border-b">{{ t('gallery.auto_paging') }}</h3>
+    <label class="flex items-center gap-2 cursor-pointer text-xs">
+        <input type="checkbox" id="auto-paging-toggle" class="auto-paging-toggle-input">
+        <span>{{ t('gallery.auto_paging') }}</span>
+    </label>
+    <p class="text-secondary text-xs mt-1">{{ t('gallery.auto_paging_hint') }}</p>
+</div>
+{% endif %}
+{% endmacro %}
+
 {# Popular Tags Sidebar Section #}
 {% macro popular_tags_section() %}
 <h3 class="text-sm font-bold mb-2 pb-1 border-b">{{ t('gallery.popular_tags') }}</h3>

@@ -479,6 +479,19 @@ async def scan_media(
         'new_files': result['new_files'],
         'files': [f['path'] for f in result['files']]
     }
+
+
+@router.post("/regenerate-thumbnails")
+async def regenerate_thumbnails(
+    current_user: User = Depends(require_admin_mode),
+    db: Session = Depends(get_db)
+):
+    """Regenerate thumbnails for all image, GIF, and video media."""
+    from ..utils.regenerate_thumbnails import regenerate_all_thumbnails
+
+    result = regenerate_all_thumbnails(db)
+    invalidate_media_cache()
+    return result
     
 @router.get("/get-untracked-file")
 async def get_untracked_file(

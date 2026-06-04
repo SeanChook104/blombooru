@@ -1,6 +1,8 @@
 class AdminPanel {
     constructor() {
         this.aliasCache = new Set();
+        this.equivalentCanonicalTag = null;
+        this.mergeSelectedTagIds = new Set();
         this.tagInputHelper = new TagInputHelper();
         this.validationTimeout = null;
         this.themeSelect = null;
@@ -225,6 +227,11 @@ class AdminPanel {
         const scanBtn = document.getElementById('scan-media-btn');
         if (scanBtn) {
             scanBtn.addEventListener('click', () => this.scanMedia());
+        }
+
+        const regenThumbsBtn = document.getElementById('regenerate-thumbnails-btn');
+        if (regenThumbsBtn) {
+            regenThumbsBtn.addEventListener('click', () => this.regenerateThumbnails());
         }
 
         // Add tags form
@@ -928,6 +935,39 @@ class AdminPanel {
         }
     }
 
+    async regenerateThumbnails() {
+        const btn = document.getElementById('regenerate-thumbnails-btn');
+        if (!btn) return;
+
+        const originalText = btn.textContent;
+        if (!confirm(window.i18n.t('admin.media_management.regenerate_thumbnails_confirm'))) {
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = window.i18n.t('admin.media_management.regenerate_thumbnails_running');
+
+        try {
+            const result = await app.apiCall('/api/admin/regenerate-thumbnails', {
+                method: 'POST'
+            });
+
+            app.showNotification(
+                window.i18n.t('notifications.admin.thumbnails_regenerated', {
+                    succeeded: result.succeeded,
+                    failed: result.failed,
+                    skipped: result.skipped
+                }),
+                result.failed > 0 ? 'warning' : 'success'
+            );
+        } catch (error) {
+            app.showNotification(error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    }
+
     async scanMedia() {
         const scanBtn = document.getElementById('scan-media-btn');
         const originalText = scanBtn.textContent;
@@ -1111,9 +1151,199 @@ class AdminPanel {
             }
         });
 
+        this.setupTagEquivalents();
+
         // Clear tags
         const clearBtn = document.getElementById('clear-tags-btn');
         clearBtn?.addEventListener('click', () => this.clearAllTags());
+    }
+
+    setupTagEquivalents() {
+        const searchBtn = document.getElementById('equivalent-canonical-search-btn');
+        const searchInput = document.getElementById('equivalent-canonical-search');
+        const saveBtn = document.getElementById('equivalent-aliases-save-btn');
+        const mergeBtn = document.getElementById('merge-tags-btn');
+
+        searchBtn?.addEventListener('click', () => this.searchCanonicalForEquivalents());
+        searchInput?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.searchCanonicalForEquivalents();
+        });
+        saveBtn?.addEventListener('click', () => this.saveTagEquivalents());
+        mergeBtn?.addEventListener('click', () => this.mergeTagsIntoCanonical());
+    }
+
+    async searchCanonicalForEquivalents() {
+        const query = document.getElementById('equivalent-canonical-search')?.value?.trim();
+        const resultsDiv = document.getElementById('equivalent-canonical-results');
+        if (!query || !resultsDiv) return;
+
+        try {
+            const response = await app.apiCall(`/api/tags-management/search?q=${encodeURIComponent(query)}`);
+            const tags = Array.isArray(response) ? response : [];
+            if (tags.length === 0) {
+                resultsDiv.innerHTML = `<p class="text-xs text-secondary p-2">${window.i18n.t('gallery.no_tags_found')}</p>`;
+                return;
+            }
+            resultsDiv.innerHTML = tags.map(tag => `
+                <button type="button" class="equivalent-canonical-pick w-full text-left bg p-2 border-b text-xs hover:border-primary"
+                    data-tag-id="${tag.id}" data-tag-name="${this.escapeHtml(tag.name)}">
+                    <span class="tag ${this.escapeHtml(tag.category)}">${this.escapeHtml(tag.name)}</span>
+                    <span class="text-secondary ml-2">(${tag.post_count})</span>
+                </button>
+            `).join('');
+            resultsDiv.querySelectorAll('.equivalent-canonical-pick').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tagId = parseInt(btn.dataset.tagId, 10);
+                    this.selectCanonicalForEquivalents(tagId);
+                });
+            });
+        } catch (e) {
+            resultsDiv.innerHTML = `<p class="text-xs text-danger p-2">${this.escapeHtml(e.message)}</p>`;
+        }
+    }
+
+    async selectCanonicalForEquivalents(tagId) {
+        try {
+            const tag = await app.apiCall(`/api/tags-management/${tagId}`);
+            this.equivalentCanonicalTag = tag;
+            this.mergeSelectedTagIds.clear();
+            this.renderEquivalentCanonicalSelected();
+            this.renderMergeTagSelection();
+            document.getElementById('equivalent-aliases-save-btn')?.removeAttribute('disabled');
+            document.getElementById('merge-tags-btn')?.removeAttribute('disabled');
+        } catch (e) {
+            app.showNotification(e.message, 'error');
+        }
+    }
+
+    renderEquivalentCanonicalSelected() {
+        const panel = document.getElementById('equivalent-canonical-selected');
+        const nameEl = document.getElementById('equivalent-canonical-name');
+        const metaEl = document.getElementById('equivalent-canonical-meta');
+        const aliasesInput = document.getElementById('equivalent-aliases-input');
+        const tag = this.equivalentCanonicalTag;
+        if (!panel || !tag) return;
+
+        panel.classList.remove('hidden');
+        if (nameEl) nameEl.textContent = tag.name;
+        if (metaEl) {
+            metaEl.textContent = `${tag.category} · ${tag.post_count} ${window.i18n.t('admin.tags_management.posts_label')}`;
+        }
+        if (aliasesInput) {
+            aliasesInput.value = (tag.aliases || []).join(', ');
+        }
+        document.getElementById('equivalent-canonical-results').innerHTML = '';
+    }
+
+    parseEquivalentNames(text) {
+        if (!text || !text.trim()) return [];
+        return text.split(/[,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    }
+
+    async saveTagEquivalents() {
+        const tag = this.equivalentCanonicalTag;
+        const statusEl = document.getElementById('equivalent-aliases-status');
+        if (!tag) return;
+
+        const aliases = this.parseEquivalentNames(
+            document.getElementById('equivalent-aliases-input')?.value || ''
+        );
+
+        try {
+            const result = await app.apiCall(`/api/tags-management/${tag.id}/aliases`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ aliases }),
+            });
+            this.equivalentCanonicalTag = { ...tag, aliases: result.aliases };
+            const merged = result.merged || [];
+            const msg = merged.length > 0
+                ? window.i18n.t('admin.tags_management.equivalents_saved_merged', {
+                    tags: merged.join(', '),
+                })
+                : window.i18n.t('admin.tags_management.equivalents_saved');
+            if (statusEl) {
+                statusEl.classList.remove('hidden');
+                statusEl.className = 'text-xs text-success';
+                statusEl.textContent = msg;
+            }
+            app.showNotification(msg, 'success');
+            if (merged.length > 0) {
+                await this.selectCanonicalForEquivalents(tag.id);
+            }
+            await this.loadTagStats();
+        } catch (e) {
+            if (statusEl) {
+                statusEl.classList.remove('hidden');
+                statusEl.className = 'text-xs text-danger';
+                statusEl.textContent = e.message;
+            }
+            app.showNotification(e.message, 'error');
+        }
+    }
+
+    renderMergeTagSelection() {
+        const container = document.getElementById('merge-tag-selection');
+        const tag = this.equivalentCanonicalTag;
+        if (!container || !tag) {
+            if (container) container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = `<p class="text-secondary mb-2">${window.i18n.t('admin.tags_management.merge_select_hint')}</p>`;
+    }
+
+    toggleMergeTag(tagId, checked) {
+        if (checked) {
+            this.mergeSelectedTagIds.add(tagId);
+        } else {
+            this.mergeSelectedTagIds.delete(tagId);
+        }
+    }
+
+    async mergeTagsIntoCanonical() {
+        const canonical = this.equivalentCanonicalTag;
+        if (!canonical) return;
+
+        const sourceIds = [...this.mergeSelectedTagIds].filter(id => id !== canonical.id);
+        if (sourceIds.length === 0) {
+            app.showNotification(window.i18n.t('admin.tags_management.merge_no_sources'), 'warning');
+            return;
+        }
+
+        const modal = new ModalHelper({
+            id: 'merge-tags-modal',
+            type: 'warning',
+            title: window.i18n.t('admin.tags_management.merge_confirm_title'),
+            message: window.i18n.t('admin.tags_management.merge_confirm_message', { tag: canonical.name }),
+            confirmText: window.i18n.t('common.confirm'),
+            cancelText: window.i18n.t('common.cancel'),
+            onConfirm: async () => {
+                try {
+                    const result = await app.apiCall('/api/tags-management/merge', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            canonical_tag_id: canonical.id,
+                            source_tag_ids: sourceIds,
+                        }),
+                    });
+                    app.showNotification(
+                        window.i18n.t('admin.tags_management.merge_complete', {
+                            tag: result.canonical,
+                            count: result.merged.length,
+                        }),
+                        'success'
+                    );
+                    this.mergeSelectedTagIds.clear();
+                    await this.selectCanonicalForEquivalents(canonical.id);
+                    await this.loadTagStats();
+                    await this.searchTags();
+                } catch (e) {
+                    app.showNotification(e.message, 'error');
+                }
+            },
+        });
+        modal.show();
     }
 
     async loadTagStats() {
@@ -1284,30 +1514,54 @@ class AdminPanel {
         }
 
         try {
-            const response = await fetch(`/api/admin/search-tags?q=${encodeURIComponent(query)}`);
-            const data = await response.json();
+            const tags = await app.apiCall(`/api/tags-management/search?q=${encodeURIComponent(query)}`);
+            const tagList = Array.isArray(tags) ? tags : [];
 
-            if (data.tags.length === 0) {
+            if (tagList.length === 0) {
                 resultsDiv.innerHTML = '<p class="text-xs text-secondary p-3">' + window.i18n.t('gallery.no_tags_found') + '</p>';
                 return;
             }
 
-            resultsDiv.innerHTML = data.tags.map(tag => `
-                <div class="bg p-3 border-b flex justify-between items-center">
-                    <div>
-                        <button class="delete-tag-btn text-xs bg-danger hover:bg-danger tag-text px-2 py-1 mr-2" data-tag-id="${tag.id}">&#x2715;</button>
-                        <a href="/?q=${encodeURIComponent(tag.name)}" class="tag ${tag.category} tag-text">${tag.name}</a>
-                        <span class="text-xs text-secondary ml-2">(${tag.post_count} posts)</span>
+            resultsDiv.innerHTML = tagList.map(tag => {
+                const aliasesHtml = (tag.aliases && tag.aliases.length > 0)
+                    ? `<div class="text-xs text-secondary mt-1">${window.i18n.t('admin.tags_management.aliases_label')}: ${tag.aliases.map(a => this.escapeHtml(a)).join(', ')}</div>`
+                    : '';
+                const mergeCheckbox = this.equivalentCanonicalTag
+                    ? `<label class="flex items-center gap-1 ml-2 text-xs">
+                        <input type="checkbox" class="merge-tag-checkbox" data-tag-id="${tag.id}"
+                            ${tag.id === this.equivalentCanonicalTag.id ? 'disabled' : ''}
+                            ${this.mergeSelectedTagIds.has(tag.id) ? 'checked' : ''}>
+                        ${window.i18n.t('admin.tags_management.merge_checkbox')}
+                       </label>`
+                    : '';
+                return `
+                <div class="bg p-3 border-b">
+                    <div class="flex justify-between items-center flex-wrap gap-2">
+                        <div class="flex items-center flex-wrap gap-1">
+                            <button class="delete-tag-btn text-xs bg-danger hover:bg-danger tag-text px-2 py-1" data-tag-id="${tag.id}">&#x2715;</button>
+                            <button type="button" class="edit-equivalents-btn text-xs btn-secondary px-2 py-1" data-tag-id="${tag.id}">${window.i18n.t('admin.tags_management.edit_equivalents')}</button>
+                            <a href="/?q=${encodeURIComponent(tag.name)}" class="tag ${tag.category} tag-text">${this.escapeHtml(tag.name)}</a>
+                            <span class="text-xs text-secondary ml-2">(${tag.post_count})</span>
+                            ${mergeCheckbox}
+                        </div>
+                        <span class="text-xs text-secondary uppercase">${tag.category}</span>
                     </div>
-                    <span class="text-xs text-secondary uppercase">${tag.category}</span>
-                </div>
-                `).join('');
+                    ${aliasesHtml}
+                </div>`;
+            }).join('');
 
-            // Add event listeners to delete buttons
             resultsDiv.querySelectorAll('.delete-tag-btn').forEach(btn => {
+                btn.addEventListener('click', () => this.deleteTag(btn.dataset.tagId));
+            });
+            resultsDiv.querySelectorAll('.edit-equivalents-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const tagId = btn.dataset.tagId;
-                    this.deleteTag(tagId);
+                    this.selectCanonicalForEquivalents(parseInt(btn.dataset.tagId, 10));
+                    document.getElementById('equivalent-canonical-search')?.scrollIntoView({ behavior: 'smooth' });
+                });
+            });
+            resultsDiv.querySelectorAll('.merge-tag-checkbox').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    this.toggleMergeTag(parseInt(cb.dataset.tagId, 10), cb.checked);
                 });
             });
 
@@ -1329,7 +1583,7 @@ class AdminPanel {
             cancelId: 'delete-tag-confirm-no',
             onConfirm: async () => {
                 try {
-                    const result = await app.apiCall(`/api/admin/tags/${tagId}`, { method: 'DELETE' });
+                    const result = await app.apiCall(`/api/tags-management/${tagId}`, { method: 'DELETE' });
                     app.showNotification(window.i18n.t('notifications.admin.tag_deleted', { tag_name: result.tag_name }), 'success');
                     await this.searchTags();
                     await this.loadTagStats();

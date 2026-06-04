@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user, require_admin_mode
 from ..database import get_db
 from ..models import Media, Tag, User, blombooru_media_tags
+from ..utils.tag_resolver import (expand_tag_ids_for_search, resolve_canonical_tag,
+                                  resolve_tag_name_for_upload)
 from ..schemas import TagCategoryEnum, TagCreate, TagResponse
 from ..utils.cache import cache_response, invalidate_tag_cache
 
@@ -97,11 +99,29 @@ async def autocomplete_tags(
     
     return [{"name": tag.name, "category": tag.category, "count": tag.post_count} for tag in tags]
 
+
+@router.get("/resolve")
+@cache_response(expire=3600, key_prefix="tags_resolve")
+async def resolve_tag_names(
+    request: Request,
+    names: str = Query(..., description="Comma-separated tag names to resolve"),
+    db: Session = Depends(get_db),
+):
+    """Resolve tag names and aliases to canonical tag names for uploads."""
+    inputs = [n.strip().lower() for n in names.split(",") if n.strip()]
+    return {
+        "tags": [
+            {"input": n, "name": resolve_tag_name_for_upload(n, db)}
+            for n in inputs
+        ]
+    }
+
+
 @router.get("/{tag_name}", response_model=TagResponse)
 @cache_response(expire=3600, key_prefix="tag_detail")
 async def get_tag(request: Request, tag_name: str, db: Session = Depends(get_db)):
-    """Get single tag"""
-    tag = db.query(Tag).filter(Tag.name == tag_name.lower()).first()
+    """Get single tag (resolves alias names to canonical tag)"""
+    tag = resolve_canonical_tag(tag_name, db)
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
     return tag
@@ -192,12 +212,13 @@ async def get_related_tags(
     db: Session = Depends(get_db)
 ):
     """Get tags that frequently appear with this tag"""
-    tag = db.query(Tag).filter(Tag.name == tag_name.lower()).first()
+    tag = resolve_canonical_tag(tag_name, db)
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
-    
+
+    tag_ids = expand_tag_ids_for_search(tag.name, db)
     media_with_tag = db.query(Media.id).join(blombooru_media_tags).filter(
-        blombooru_media_tags.c.tag_id == tag.id
+        blombooru_media_tags.c.tag_id.in_(tag_ids)
     ).subquery()
     
     related = db.query(

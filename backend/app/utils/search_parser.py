@@ -8,6 +8,7 @@ from sqlalchemy.orm import Query, Session, aliased
 
 from ..models import (Album, Media, RatingEnum, Tag, TagCategoryEnum,
                       blombooru_album_media, blombooru_media_tags)
+from .tag_resolver import expand_tag_ids_for_search
 
 TOKEN_PATTERN = re.compile(r'(-?)(?:([a-zA-Z0-9_]+):)?("[^"]*"|[^\s"]+)')
 
@@ -261,25 +262,32 @@ def apply_search_criteria(query: Query, parsed_query: Dict[str, Any], db: Sessio
 
     include_names = [name.lower() for name in tags['include']]
     if include_names:
-        found_tags = db.query(Tag).filter(Tag.name.in_(include_names)).all()
-        # Use lowercase keys for robust lookup
-        found_map = {t.name.lower(): t for t in found_tags}
-        
-        # If any included tag is missing, result is empty (AND logic)
         for name in include_names:
-            if name not in found_map:
-                from sqlalchemy import literal
+            tag_ids = expand_tag_ids_for_search(name, db)
+            if not tag_ids:
                 return query.filter(literal(False))
-            
-        # Apply filters for found tags
-        for tag in found_tags:
-            query = query.filter(Media.tags.contains(tag))
+            query = query.filter(
+                exists().where(
+                    and_(
+                        blombooru_media_tags.c.media_id == Media.id,
+                        blombooru_media_tags.c.tag_id.in_(tag_ids),
+                    )
+                )
+            )
 
     exclude_names = [name.lower() for name in tags['exclude']]
     if exclude_names:
-        found_excluded = db.query(Tag).filter(Tag.name.in_(exclude_names)).all()
-        for tag in found_excluded:
-             query = query.filter(~Media.tags.contains(tag))
+        for name in exclude_names:
+            tag_ids = expand_tag_ids_for_search(name, db)
+            if tag_ids:
+                query = query.filter(
+                    ~exists().where(
+                        and_(
+                            blombooru_media_tags.c.media_id == Media.id,
+                            blombooru_media_tags.c.tag_id.in_(tag_ids),
+                        )
+                    )
+                )
 
     for wildcard_type, pattern in tags['wildcards']:
         regex_pattern = wildcard_to_regex(pattern)

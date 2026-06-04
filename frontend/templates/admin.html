@@ -690,8 +690,12 @@
                             {{ t('admin.media_management.archive_hint') }}
                         </p>
                         <button id="scan-media-btn"
-                            class="btn-primary w-full mb-4">
+                            class="btn-primary w-full mb-2">
                             {{ t('admin.media_management.scan_untracked') }}
+                        </button>
+                        <button id="regenerate-thumbnails-btn"
+                            class="btn w-full mb-4">
+                            {{ t('admin.media_management.regenerate_thumbnails') }}
                         </button>
                         <div id="upload-area" class="upload-area">
                             <p class="text-xs">{{ t('admin.media_management.drop_media') }}</p>
@@ -804,6 +808,42 @@
                             <div class="text-xs">
                                 <div id="add-tags-result"></div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <h3 class="text-sm font-bold mb-3">{{ t('admin.tags_management.tag_equivalents_title') }}</h3>
+                    <div class="bg p-4 border">
+                        <p class="text-xs text-secondary mb-3">{{ t('admin.tags_management.tag_equivalents_hint') }}</p>
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" id="equivalent-canonical-search"
+                                placeholder="{{ t('admin.tags_management.canonical_tag_placeholder') }}"
+                                class="flex-1 w-full bg px-3 py-2 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary">
+                            <button type="button" id="equivalent-canonical-search-btn" class="btn-primary">
+                                {{ t('common.search') }}
+                            </button>
+                        </div>
+                        <div id="equivalent-canonical-results" class="max-h-32 overflow-y-auto mb-3"></div>
+                        <div id="equivalent-canonical-selected" class="hidden mb-3 p-3 border bg">
+                            <div class="text-xs text-secondary mb-1">{{ t('admin.tags_management.canonical_tag') }}</div>
+                            <div class="font-bold text-sm" id="equivalent-canonical-name"></div>
+                            <div class="text-xs text-secondary mt-1" id="equivalent-canonical-meta"></div>
+                        </div>
+                        <label class="block text-xs font-bold mb-2">{{ t('admin.tags_management.equivalent_names') }}</label>
+                        <textarea id="equivalent-aliases-input" rows="2"
+                            placeholder="{{ t('admin.tags_management.equivalent_names_placeholder') }}"
+                            class="w-full bg px-3 py-2 border text-xs mb-3 focus:outline-none hover:border-primary transition-colors focus:border-primary"></textarea>
+                        <button type="button" id="equivalent-aliases-save-btn" class="btn-primary w-full mb-2" disabled>
+                            {{ t('admin.tags_management.save_equivalents') }}
+                        </button>
+                        <div id="equivalent-aliases-status" class="text-xs hidden"></div>
+                        <div class="border-t pt-3 mt-3">
+                            <p class="text-xs text-secondary mb-2">{{ t('admin.tags_management.merge_tags_hint') }}</p>
+                            <div id="merge-tag-selection" class="max-h-32 overflow-y-auto mb-2 text-xs"></div>
+                            <button type="button" id="merge-tags-btn" class="btn-secondary w-full" disabled>
+                                {{ t('admin.tags_management.merge_into_canonical') }}
+                            </button>
                         </div>
                     </div>
                 </div>

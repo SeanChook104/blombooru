@@ -1,6 +1,6 @@
 (function () {
-  if (window.__blomPixivLoaded) return;
-  window.__blomPixivLoaded = true;
+  if (window.__blomExtensionLoaded) return;
+  window.__blomExtensionLoaded = true;
 
   function isArtworkPage() {
     return /\/artworks\/\d+/.test(location.pathname);
@@ -53,23 +53,190 @@
     return cleaned ? `artist:${cleaned}` : "";
   }
 
-  function ensureUi() {
-    if (!document.getElementById("blom-pixiv-controls")) {
+  function isExhentaiGalleryPage() {
+    try {
+      const host = location.hostname.toLowerCase();
+      return (host === "exhentai.org" || host === "e-hentai.org") && /^\/g\/\d+\//.test(location.pathname);
+    } catch {
+      return false;
+    }
+  }
+
+  function stripExhentaiTagNamespace(tag) {
+    const normalized = String(tag || "")
+      .trim()
+      .replace(/\s+/g, "_")
+      .toLowerCase();
+    const colon = normalized.indexOf(":");
+    return colon >= 0 ? normalized.slice(colon + 1) : normalized;
+  }
+
+  function extractExhentaiTags(doc = document) {
+    const taglist = doc.querySelector("#taglist");
+    if (!taglist) return [];
+
+    const tags = new Set();
+    taglist.querySelectorAll('a[href*="/tag/"]').forEach((anchor) => {
+      try {
+        const path = new URL(anchor.href, location.origin).pathname;
+        const match = path.match(/\/tag\/(.+)$/);
+        if (!match?.[1]) return;
+        const decoded = decodeURIComponent(match[1]).replace(/\+/g, " ").trim();
+        const name = stripExhentaiTagNamespace(decoded);
+        if (name) tags.add(name);
+      } catch {
+        // ignore
+      }
+    });
+    return [...tags];
+  }
+
+  function parseTagsInput(raw) {
+    return String(raw || "")
+      .split(/\s+/)
+      .map((t) => sanitizeTag(t))
+      .filter(Boolean);
+  }
+
+  function guessFilenameFromUrl(imageUrl) {
+    try {
+      const path = new URL(imageUrl).pathname;
+      const base = path.split("/").pop() || "image.jpg";
+      return base.includes(".") ? base : `${base}.jpg`;
+    } catch {
+      return "image.jpg";
+    }
+  }
+
+  function restoreDefaultOverlay() {
+    const overlay = document.getElementById("blom-overlay");
+    if (!overlay) return;
+    overlay.innerHTML = `
+      <div class="inner">
+        <h2>Blombooru Import</h2>
+        <div class="line" id="blom-progress-main">Ready</div>
+        <div class="line" id="blom-progress-sub"></div>
+        <div class="progress-wrap"><div class="progress" id="blom-progress-bar"></div></div>
+      </div>
+    `;
+  }
+
+  function showImageUploadDialog({ imageUrl, sourceUrl, tags = [] }) {
+    ensureUi({ overlayOnly: true });
+    setOverlay(true);
+
+    const defaultTags = (tags.length ? tags : (isExhentaiGalleryPage() ? extractExhentaiTags() : []))
+      .map((t) => sanitizeTag(t))
+      .filter(Boolean);
+    const defaultSource = sourceUrl || location.href;
+    const defaultRating = isExhentaiGalleryPage() ? "explicit" : "safe";
+
+    const inner = document.querySelector("#blom-overlay .inner");
+    if (!inner) return;
+
+    inner.innerHTML = `
+      <h2>Send image to Blombooru</h2>
+      <div class="line blom-upload-preview-wrap">
+        <img class="blom-upload-preview" src="${imageUrl.replace(/"/g, "&quot;")}" alt="Selected image" />
+      </div>
+      <div class="line">
+        <label class="blom-field-label">Source URL</label>
+        <input id="blom-upload-source" type="url" value="${defaultSource.replace(/"/g, "&quot;")}" />
+      </div>
+      <div class="line">
+        <label class="blom-field-label">Tags (space-separated)</label>
+        <input id="blom-upload-tags" type="text" value="${defaultTags.join(" ").replace(/"/g, "&quot;")}" placeholder="arknights_endfield anon vtuber" />
+      </div>
+      <div class="line">
+        <label class="blom-field-label">Rating</label>
+        <select id="blom-upload-rating">
+          <option value="safe" ${defaultRating === "safe" ? "selected" : ""}>safe</option>
+          <option value="questionable" ${defaultRating === "questionable" ? "selected" : ""}>questionable</option>
+          <option value="explicit" ${defaultRating === "explicit" ? "selected" : ""}>explicit</option>
+        </select>
+      </div>
+      <div class="line blom-upload-actions">
+        <button id="blom-upload-cancel" class="blom-btn secondary">Cancel</button>
+        <button id="blom-upload-submit" class="blom-btn">Upload</button>
+      </div>
+      <div class="line" id="blom-progress-main" style="margin-top: 10px;"></div>
+      <div class="line" id="blom-progress-sub" style="font-size: 12px; opacity: 0.85;"></div>
+      <div class="progress-wrap"><div class="progress" id="blom-progress-bar" style="width:0%"></div></div>
+    `;
+
+    const cancelBtn = document.getElementById("blom-upload-cancel");
+    const submitBtn = document.getElementById("blom-upload-submit");
+
+    cancelBtn.onclick = () => {
+      restoreDefaultOverlay();
+      setOverlay(false);
+    };
+
+    submitBtn.onclick = async () => {
+      const source = document.getElementById("blom-upload-source")?.value?.trim() || defaultSource;
+      const tagsRaw = document.getElementById("blom-upload-tags")?.value || "";
+      const rating = document.getElementById("blom-upload-rating")?.value || defaultRating;
+      const tagList = parseTagsInput(tagsRaw);
+
+      submitBtn.disabled = true;
+      cancelBtn.disabled = true;
+
+      try {
+        const settings = await getSettings();
+        setProgress("Downloading image…", imageUrl, 0, 1);
+
+        const blob = await withRetry(
+          () => fetchBlobViaBlombooruProxy(settings.baseUrl, settings.apiKey, imageUrl),
+          5,
+          "Download image"
+        );
+
+        const filename = guessFilenameFromUrl(imageUrl);
+        const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+
+        setProgress("Uploading to Blombooru…", "", 0, 1);
+        await uploadToBlombooru({
+          baseUrl: settings.baseUrl,
+          apiKey: settings.apiKey,
+          file,
+          tags: tagList,
+          source,
+          rating
+        });
+
+        setProgress("Done", "Image uploaded.", 1, 1);
+        setTimeout(() => {
+          restoreDefaultOverlay();
+          setOverlay(false);
+        }, 1200);
+      } catch (err) {
+        setProgress("Upload failed", String(err.message || err), 0, 1);
+        submitBtn.disabled = false;
+        cancelBtn.disabled = false;
+      }
+    };
+  }
+
+  function ensureUi(options = {}) {
+    const { overlayOnly = false } = options;
+    const showSiteControls = !overlayOnly && (isArtworkPage() || isBookmarkPage() || isSankakuPostPage() || isSankakuListPage());
+
+    if (showSiteControls && !document.getElementById("blom-controls")) {
       const controls = document.createElement("div");
-      controls.id = "blom-pixiv-controls";
+      controls.id = "blom-controls";
       controls.innerHTML = `
-        <button class="blom-pixiv-btn" id="blom-send-current">Send to Blombooru</button>
-        ${(isBookmarkPage() || isSankakuListPage()) ? '<button class="blom-pixiv-btn secondary" id="blom-send-bookmark-page">Send page</button>' : ""}
+        <button class="blom-btn" id="blom-send-current">Send to Blombooru</button>
+        ${(isBookmarkPage() || isSankakuListPage()) ? '<button class="blom-btn secondary" id="blom-send-bookmark-page">Send page</button>' : ""}
       `;
       document.body.appendChild(controls);
     }
 
-    if (!document.getElementById("blom-pixiv-overlay")) {
+    if (!document.getElementById("blom-overlay")) {
       const overlay = document.createElement("div");
-      overlay.id = "blom-pixiv-overlay";
+      overlay.id = "blom-overlay";
       overlay.innerHTML = `
         <div class="inner">
-          <h2>Blombooru Pixiv Import</h2>
+          <h2>Blombooru Import</h2>
           <div class="line" id="blom-progress-main">Ready</div>
           <div class="line" id="blom-progress-sub"></div>
           <div class="progress-wrap"><div class="progress" id="blom-progress-bar"></div></div>
@@ -80,7 +247,7 @@
   }
 
   function setOverlay(visible) {
-    const overlay = document.getElementById("blom-pixiv-overlay");
+    const overlay = document.getElementById("blom-overlay");
     if (overlay) overlay.style.display = visible ? "flex" : "none";
   }
 
@@ -117,14 +284,14 @@
       ensureUi();
       setOverlay(true);
 
-      const inner = document.querySelector("#blom-pixiv-overlay .inner");
+      const inner = document.querySelector("#blom-overlay .inner");
       if (!inner) return resolve(null);
 
       inner.innerHTML = `
         <h2>Bookmark import settings</h2>
         <div class="line" style="font-size: 12px; opacity: 0.9;">These apply to this bookmark import session.</div>
         <div class="line">
-          <label style="display:block; font-size:12px; margin-bottom:4px;">Wait (ms) between Pixiv API requests</label>
+          <label style="display:block; font-size:12px; margin-bottom:4px;">Wait (ms) between import requests</label>
           <input id="blom-waitms" type="number" min="0" step="50" value="${Number.isFinite(waitMs) ? waitMs : 350}"
             style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #444; background:#111; color:#fff;" />
         </div>
@@ -146,8 +313,8 @@
           </label>
         </div>
         <div class="line" style="display:flex; gap: 10px; margin-top: 12px;">
-          <button id="blom-cancel-settings" class="blom-pixiv-btn secondary" style="flex:1;">Cancel</button>
-          <button id="blom-start-settings" class="blom-pixiv-btn" style="flex:1;">Start</button>
+          <button id="blom-cancel-settings" class="blom-btn secondary" style="flex:1;">Cancel</button>
+          <button id="blom-start-settings" class="blom-btn" style="flex:1;">Start</button>
         </div>
         <div class="progress-wrap" style="margin-top: 14px;"><div class="progress" id="blom-progress-bar" style="width:0%"></div></div>
         <div class="line" id="blom-progress-main" style="margin-top: 10px;">Waiting…</div>
@@ -163,11 +330,11 @@
 
       const cleanup = () => {
         // restore base overlay UI (progress UI) for import flow
-        const overlay = document.getElementById("blom-pixiv-overlay");
+        const overlay = document.getElementById("blom-overlay");
         if (!overlay) return;
         overlay.innerHTML = `
           <div class="inner">
-            <h2>Blombooru Pixiv Import</h2>
+            <h2>Blombooru Import</h2>
             <div class="line" id="blom-progress-main">Ready</div>
             <div class="line" id="blom-progress-sub"></div>
             <div class="progress-wrap"><div class="progress" id="blom-progress-bar"></div></div>
@@ -250,11 +417,54 @@
     return resp.blob();
   }
 
-  async function uploadToBlombooru({ baseUrl, apiKey, file, tags, source }) {
+  async function resolveUploadTags(baseUrl, apiKey, tags) {
+    if (!tags?.length) return tags || [];
+
+    const result = [...tags];
+    const plainEntries = [];
+    tags.forEach((tag, index) => {
+      if (!/^[a-z0-9_]+:/i.test(tag)) {
+        plainEntries.push({ index, tag });
+      }
+    });
+    if (!plainEntries.length) return result;
+
+    const uniquePlain = [...new Set(plainEntries.map((e) => e.tag))];
+    try {
+      const resp = await fetch(
+        `${baseUrl}/api/tags/resolve?names=${encodeURIComponent(uniquePlain.join(","))}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      );
+      if (!resp.ok) return result;
+
+      const data = await resp.json();
+      const nameMap = {};
+      for (const item of data.tags || []) {
+        if (item?.input) nameMap[item.input] = item.name || item.input;
+      }
+
+      for (const { index, tag } of plainEntries) {
+        result[index] = nameMap[tag] || tag;
+      }
+
+      const seen = new Set();
+      return result.filter((tag) => {
+        const key = tag.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    } catch {
+      return result;
+    }
+  }
+
+  async function uploadToBlombooru({ baseUrl, apiKey, file, tags, source, rating = "safe" }) {
+    const resolvedTags = await resolveUploadTags(baseUrl, apiKey, tags);
     const form = new FormData();
     form.append("file", file, file.name);
-    form.append("rating", "safe");
-    form.append("tags", tags.join(" "));
+    form.append("rating", rating);
+    form.append("tags", resolvedTags.join(" "));
     form.append("source", source);
 
     const resp = await fetch(`${baseUrl}/api/media/`, {
@@ -291,9 +501,10 @@
   }) {
     const frameUrls = buildUgoiraFrameUrls(originalTemplate, framesMeta.length);
     const delays = framesMeta.map((f) => Number(f.delay || 60));
+    const resolvedTags = await resolveUploadTags(baseUrl, apiKey, tags);
     const form = new FormData();
     form.append("rating", "safe");
-    form.append("tags", tags.join(" "));
+    form.append("tags", resolvedTags.join(" "));
     form.append("source", source);
     form.append("filename_base", `${illustId}_ugoira`);
     form.append("delays", JSON.stringify(delays));
@@ -867,7 +1078,7 @@
     }
   }
 
-  function init() {
+  function initSiteButtons() {
     if (!isArtworkPage() && !isBookmarkPage() && !isSankakuPostPage() && !isSankakuListPage()) {
       return;
     }
@@ -875,5 +1086,24 @@
     bindActions();
   }
 
-  init();
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === "BLOM_PING") {
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    if (message?.type === "BLOM_OPEN_IMAGE_UPLOAD") {
+      showImageUploadDialog({
+        imageUrl: message.imageUrl,
+        sourceUrl: message.sourceUrl,
+        tags: message.tags || []
+      });
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    return false;
+  });
+
+  initSiteButtons();
 })();

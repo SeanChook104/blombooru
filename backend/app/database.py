@@ -12,6 +12,14 @@ SharedSessionLocal = None
 _shared_db_available = False
 _shared_db_error = None
 
+def _postgres_connect_args(statement_timeout_ms: int, connect_timeout: int = 10) -> dict:
+    """Force UTF-8 client encoding (needed on Windows against non-UTF8 locales)."""
+    return {
+        "connect_timeout": connect_timeout,
+        "client_encoding": "utf8",
+        "options": f"-c client_encoding=UTF8 -c statement_timeout={statement_timeout_ms}",
+    }
+
 def init_engine():
     """Initialize database engine"""
     global engine, SessionLocal
@@ -27,10 +35,7 @@ def init_engine():
         max_overflow=200,
         pool_recycle=3600,
         pool_timeout=10,
-        connect_args={
-            "connect_timeout": 10,
-            "options": "-c statement_timeout=300000"
-        }
+        connect_args=_postgres_connect_args(300000),
     )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return engine
@@ -51,10 +56,7 @@ def init_shared_engine():
             pool_size=5,
             max_overflow=10,
             pool_recycle=3600,
-            connect_args={
-                "connect_timeout": 5,
-                "options": "-c statement_timeout=30000"
-            }
+            connect_args=_postgres_connect_args(30000, connect_timeout=5),
         )
         SharedSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=shared_engine)
         

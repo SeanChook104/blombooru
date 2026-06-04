@@ -1,0 +1,96 @@
+#blom-controls {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  display: flex;
+  gap: 8px;
+}
+
+.blom-btn {
+  border: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  background: #0096fa;
+}
+
+.blom-btn.secondary {
+  background: #3d3d3d;
+}
+
+#blom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: rgba(0, 0, 0, 0.92);
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-family: Arial, sans-serif;
+}
+
+#blom-overlay .inner {
+  width: min(820px, 92vw);
+}
+
+#blom-overlay .line {
+  margin-bottom: 10px;
+}
+
+#blom-overlay .progress-wrap {
+  width: 100%;
+  height: 16px;
+  background: #222;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#blom-overlay .progress {
+  height: 100%;
+  width: 0%;
+  background: #00b8ff;
+}
+
+#blom-overlay .blom-field-label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+  opacity: 0.9;
+}
+
+#blom-overlay input[type="url"],
+#blom-overlay input[type="text"],
+#blom-overlay select {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #111;
+  color: #fff;
+  box-sizing: border-box;
+}
+
+#blom-overlay .blom-upload-preview-wrap {
+  text-align: center;
+}
+
+#blom-overlay .blom-upload-preview {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+#blom-overlay .blom-upload-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+#blom-overlay .blom-upload-actions .blom-btn {
+  flex: 1;
+}

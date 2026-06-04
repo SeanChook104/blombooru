@@ -1,17 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Blombooru Pixiv Importer",
-  "version": "0.1.0",
-  "description": "Send Pixiv artwork and bookmark pages to Blombooru.",
-  "permissions": ["storage"],
+  "name": "Blombooru Web Importer",
+  "version": "0.3.0",
+  "description": "Import images from any site, ExHentai, Pixiv, and Sankaku into Blombooru.",
+  "permissions": ["storage", "contextMenus", "scripting", "activeTab"],
   "host_permissions": [
     "https://www.pixiv.net/*",
     "https://i.pximg.net/*",
+    "https://exhentai.org/*",
+    "https://e-hentai.org/*",
     "http://*/*",
     "https://*/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
-    "default_title": "Blombooru Pixiv Importer",
+    "default_title": "Blombooru Web Importer",
     "default_popup": "popup.html"
   },
   "content_scripts": [
@@ -21,7 +26,9 @@
         "https://www.pixiv.net/*/users/*/bookmarks/artworks*",
         "https://www.pixiv.net/users/*/bookmarks/artworks*",
         "https://chan.sankakucomplex.com/*/posts*",
-        "https://chan.sankakucomplex.com/posts*"
+        "https://chan.sankakucomplex.com/posts*",
+        "https://exhentai.org/*",
+        "https://e-hentai.org/*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],

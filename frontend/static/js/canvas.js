@@ -248,6 +248,10 @@ class CanvasEditor {
             this.updateZoomLabel();
         });
 
+        document.getElementById('canvas-auto-fill')?.addEventListener('click', () => {
+            this.autoFillViewport();
+        });
+
         document.getElementById('canvas-crop-toggle')?.addEventListener('click', () => {
             this.toggleCropMode();
         });
@@ -255,6 +259,116 @@ class CanvasEditor {
         document.getElementById('canvas-delete-selected')?.addEventListener('click', () => {
             this.deleteSelected();
         });
+    }
+
+    getAutoFillTargets() {
+        return this.canvas.getObjects().filter((obj) => {
+            return obj && (obj._canvasMediaType === 'image' || obj._canvasMediaType === 'gif' || obj._canvasMediaType === 'video');
+        });
+    }
+
+    autoFillViewport() {
+        const targets = this.getAutoFillTargets();
+        if (!targets.length) return;
+
+        if (this.isCropMode) {
+            this.exitCropMode();
+        }
+
+        this.canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+        this.updateZoomLabel();
+
+        const canvasW = this.canvas.getWidth();
+        const canvasH = this.canvas.getHeight();
+        const margin = 28;
+        const gap = 12;
+        const availableW = Math.max(1, canvasW - margin * 2);
+        const availableH = Math.max(1, canvasH - margin * 2);
+
+        if (targets.length === 1) {
+            const obj = targets[0];
+            const baseW = Math.max(1, obj.width || 1);
+            const baseH = Math.max(1, obj.height || 1);
+            const fit = Math.min(availableW / baseW, availableH / baseH);
+            const signX = (obj.scaleX || 1) < 0 ? -1 : 1;
+            const signY = (obj.scaleY || 1) < 0 ? -1 : 1;
+            obj.set({
+                scaleX: signX * fit,
+                scaleY: signY * fit,
+                left: margin + (availableW - baseW * fit) / 2,
+                top: margin + (availableH - baseH * fit) / 2
+            });
+            obj.setCoords();
+            this.canvas.requestRenderAll();
+            this.updateSidebar();
+            return;
+        }
+
+        const targetRowHeight = Math.max(90, Math.min(260, availableH / Math.max(1, Math.round(Math.sqrt(targets.length)))));
+        const items = targets.map((obj) => {
+            const baseW = Math.max(1, obj.width || 1);
+            const baseH = Math.max(1, obj.height || 1);
+            return {
+                obj,
+                baseW,
+                baseH,
+                aspect: Math.max(0.05, baseW / baseH)
+            };
+        });
+
+        const rows = [];
+        let currentRow = [];
+        let currentAspectSum = 0;
+
+        items.forEach((item) => {
+            currentRow.push(item);
+            currentAspectSum += item.aspect;
+            const estimatedWidth = currentAspectSum * targetRowHeight + gap * (currentRow.length - 1);
+            if (estimatedWidth >= availableW && currentRow.length > 1) {
+                rows.push(currentRow);
+                currentRow = [];
+                currentAspectSum = 0;
+            }
+        });
+        if (currentRow.length) rows.push(currentRow);
+
+        const rowHeights = rows.map((row) => {
+            const ratioSum = row.reduce((sum, item) => sum + item.aspect, 0);
+            const rowGap = gap * (row.length - 1);
+            return Math.max(1, (availableW - rowGap) / Math.max(0.05, ratioSum));
+        });
+
+        const totalGapY = gap * Math.max(0, rows.length - 1);
+        const totalHeight = rowHeights.reduce((sum, h) => sum + h, 0) + totalGapY;
+        const verticalScale = totalHeight > availableH ? (availableH / totalHeight) : 1;
+        const scaledHeights = rowHeights.map((h) => Math.max(1, h * verticalScale));
+        const scaledTotalHeight = scaledHeights.reduce((sum, h) => sum + h, 0) + totalGapY;
+        let y = margin + Math.max(0, (availableH - scaledTotalHeight) / 2);
+
+        rows.forEach((row, rowIndex) => {
+            const rowHeight = scaledHeights[rowIndex];
+            const rowTotalWidth = row.reduce((sum, item) => sum + item.aspect * rowHeight, 0) + gap * Math.max(0, row.length - 1);
+            let x = margin + Math.max(0, (availableW - rowTotalWidth) / 2);
+
+            row.forEach((item) => {
+                const targetW = rowHeight * item.aspect;
+                const uniformScale = targetW / item.baseW;
+                const signX = (item.obj.scaleX || 1) < 0 ? -1 : 1;
+                const signY = (item.obj.scaleY || 1) < 0 ? -1 : 1;
+                item.obj.set({
+                    scaleX: signX * uniformScale,
+                    scaleY: signY * uniformScale,
+                    left: x,
+                    top: y
+                });
+                item.obj.setCoords();
+                x += targetW + gap;
+            });
+            y += rowHeight + gap;
+        });
+
+        this.canvas.requestRenderAll();
+        this.updateSidebar();
     }
 
     setupToolbarAutohide() {
@@ -1037,6 +1151,63 @@ class CanvasEditor {
         this.sidebarVisible = false;
     }
 
+    reorderCanvasObject(obj, newIndex) {
+        const canvas = this.canvas;
+        if (typeof canvas.moveObjectTo === 'function') {
+            canvas.moveObjectTo(obj, newIndex);
+            return true;
+        }
+        if (typeof canvas.moveTo === 'function') {
+            canvas.moveTo(obj, newIndex);
+            return true;
+        }
+        return false;
+    }
+
+    stepLayerOrder(obj, direction) {
+        const canvas = this.canvas;
+        if (direction === 'up') {
+            if (typeof canvas.bringObjectForward === 'function') {
+                canvas.bringObjectForward(obj);
+                return true;
+            }
+            if (typeof canvas.bringForward === 'function') {
+                canvas.bringForward(obj);
+                return true;
+            }
+        } else {
+            if (typeof canvas.sendObjectBackwards === 'function') {
+                canvas.sendObjectBackwards(obj);
+                return true;
+            }
+            if (typeof canvas.sendBackwards === 'function') {
+                canvas.sendBackwards(obj);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    moveLayerOrder(obj, direction) {
+        const objects = this.canvas.getObjects().filter(o => o !== this.cropRect);
+        const idxBefore = objects.indexOf(obj);
+        if (idxBefore < 0) return;
+
+        let moved = this.stepLayerOrder(obj, direction);
+        if (!moved) {
+            const delta = direction === 'up' ? 1 : -1;
+            const newIdx = idxBefore + delta;
+            if (newIdx < 0 || newIdx >= objects.length) return;
+            moved = this.reorderCanvasObject(obj, newIdx);
+        }
+        if (!moved) return;
+
+        this.canvas.requestRenderAll();
+        this.updateSidebar();
+        this.canvas.setActiveObject(obj);
+        this.highlightSidebarLayer(obj);
+    }
+
     updateSidebar() {
         const list = document.getElementById('layer-list');
         if (!list) return;
@@ -1057,15 +1228,34 @@ class CanvasEditor {
 
             const typeIcon = this.getTypeIcon(obj._canvasMediaType);
             const name = obj._canvasMediaName || `Layer ${realIdx + 1}`;
+            const canMoveUp = realIdx < objects.length - 1;
+            const canMoveDown = realIdx > 0;
 
             entry.innerHTML = `
                 <span class="layer-icon">${typeIcon}</span>
                 <span class="layer-name" title="${name}">${name}</span>
+                <div class="layer-move-btns">
+                    <button type="button" class="layer-move-btn" data-dir="up" title="Move layer up" ${canMoveUp ? '' : 'disabled'} aria-label="Move layer up">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                    </button>
+                    <button type="button" class="layer-move-btn" data-dir="down" title="Move layer down" ${canMoveDown ? '' : 'disabled'} aria-label="Move layer down">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                </div>
             `;
 
-            entry.addEventListener('click', () => {
+            entry.addEventListener('click', (e) => {
+                if (e.target.closest('.layer-move-btn')) return;
                 this.canvas.setActiveObject(obj);
                 this.canvas.requestRenderAll();
+            });
+
+            entry.querySelectorAll('.layer-move-btn').forEach((btn) => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (btn.disabled) return;
+                    this.moveLayerOrder(obj, btn.dataset.dir);
+                });
             });
 
             entry.addEventListener('dragstart', (e) => {
@@ -1088,14 +1278,23 @@ class CanvasEditor {
 
             entry.addEventListener('drop', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 entry.classList.remove('drag-over');
                 const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
                 const toIdx = realIdx;
-                if (fromIdx !== toIdx) {
-                    const fromObj = objects[fromIdx];
-                    this.canvas.moveTo(fromObj, toIdx);
-                    this.canvas.requestRenderAll();
-                    this.updateSidebar();
+                if (Number.isNaN(fromIdx) || fromIdx === toIdx) return;
+
+                const currentObjects = this.canvas.getObjects().filter(o => o !== this.cropRect);
+                const fromObj = currentObjects[fromIdx];
+                if (!fromObj) return;
+
+                const moved = this.reorderCanvasObject(fromObj, toIdx);
+                if (!moved) return;
+
+                this.canvas.requestRenderAll();
+                this.updateSidebar();
+                if (this.selectedObject === fromObj) {
+                    this.canvas.setActiveObject(fromObj);
                 }
             });
 

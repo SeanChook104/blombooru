@@ -1,3 +1,6 @@
+const GALLERY_SELECTED_STORAGE_KEY = 'gallerySelectedIds';
+const GALLERY_AUTO_PAGING_STORAGE_KEY = 'galleryAutoPaging';
+
 class BaseGallery {
     constructor(options = {}) {
         this.options = {
@@ -20,6 +23,8 @@ class BaseGallery {
         this.currentPage = 1;
         this.totalPages = 1;
         this.isLoading = false;
+        this.autoPagingAppend = false;
+        this.autoPagingLoadingNext = false;
         this.selectedItems = new Set();
         this.tagCounts = new Map();
         this.tooltipHelper = null;
@@ -76,6 +81,119 @@ class BaseGallery {
         }
         this.setupBulkActions();
         this.setupDragSelectionGlobalListeners();
+        this.loadPersistedSelection();
+        this.setupAutoPaging();
+    }
+
+    // ==================== Selection persistence (gallery list) ====================
+
+    loadPersistedSelection() {
+        if (!this.elements.grid || this.elements.grid.id !== 'gallery-grid') return;
+
+        try {
+            const raw = sessionStorage.getItem(GALLERY_SELECTED_STORAGE_KEY);
+            if (!raw) return;
+            JSON.parse(raw).forEach(id => {
+                const numericId = Number(id);
+                if (Number.isFinite(numericId)) {
+                    this.selectedItems.add(numericId);
+                }
+            });
+            this.updateBulkActionsUI();
+        } catch {
+            // ignore corrupt storage
+        }
+    }
+
+    persistSelectedItems() {
+        if (!this.elements.grid || this.elements.grid.id !== 'gallery-grid') return;
+
+        try {
+            if (this.selectedItems.size === 0) {
+                sessionStorage.removeItem(GALLERY_SELECTED_STORAGE_KEY);
+            } else {
+                sessionStorage.setItem(
+                    GALLERY_SELECTED_STORAGE_KEY,
+                    JSON.stringify(Array.from(this.selectedItems))
+                );
+            }
+        } catch {
+            // ignore quota errors
+        }
+    }
+
+    // ==================== Auto paging ====================
+
+    isAutoPagingEnabled() {
+        return localStorage.getItem(GALLERY_AUTO_PAGING_STORAGE_KEY) !== 'false';
+    }
+
+    setupAutoPaging() {
+        if (!this.elements.grid || this.elements.grid.id !== 'gallery-grid') return;
+
+        const toggles = document.querySelectorAll('.auto-paging-toggle-input');
+        if (!toggles.length) return;
+
+        const enabled = this.isAutoPagingEnabled();
+        toggles.forEach(toggle => {
+            toggle.checked = enabled;
+            toggle.addEventListener('change', () => {
+                const on = toggle.checked;
+                localStorage.setItem(GALLERY_AUTO_PAGING_STORAGE_KEY, on ? 'true' : 'false');
+                toggles.forEach(other => {
+                    if (other !== toggle) other.checked = on;
+                });
+                this.autoPagingAppend = false;
+                this.currentPage = parseInt(this.getUrlParam('page', 1)) || 1;
+                this.loadContent();
+            });
+        });
+
+        const scrollEl = document.getElementById('main-scroll');
+        if (scrollEl) {
+            scrollEl.addEventListener('scroll', () => this.handleAutoPagingScroll(), { passive: true });
+        }
+    }
+
+    handleAutoPagingScroll() {
+        if (!this.isAutoPagingEnabled() || this.isLoading || this.autoPagingLoadingNext) return;
+        if (this.currentPage >= this.totalPages) return;
+
+        const scrollEl = document.getElementById('main-scroll');
+        if (!scrollEl) return;
+
+        const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+        if (distanceFromBottom > 400) return;
+
+        this.loadNextAutoPage();
+    }
+
+    async loadNextAutoPage() {
+        if (!this.isAutoPagingEnabled() || this.isLoading || this.autoPagingLoadingNext) return;
+        if (this.currentPage >= this.totalPages) return;
+
+        this.autoPagingLoadingNext = true;
+        this.currentPage += 1;
+        this.autoPagingAppend = true;
+
+        try {
+            await this.loadContent();
+        } finally {
+            this.autoPagingLoadingNext = false;
+        }
+    }
+
+    resetGallerySearch() {
+        this.currentPage = 1;
+        this.autoPagingAppend = false;
+        this.updateUrlParams({ page: 1 });
+    }
+
+    navigateGallerySearch(url) {
+        window.history.pushState({}, '', url);
+        this.currentPage = 1;
+        this.autoPagingAppend = false;
+        this.loadContent();
     }
 
     setupDragSelectionGlobalListeners() {
@@ -171,6 +289,7 @@ class BaseGallery {
     }
 
     onCustomFilterChange() {
+        this.resetGallerySearch();
         this.loadContent();
     }
 
@@ -189,6 +308,7 @@ class BaseGallery {
     }
 
     onRatingChange() {
+        this.resetGallerySearch();
         this.loadContent();
     }
 
@@ -270,6 +390,7 @@ class BaseGallery {
     onSortChange() {
         this.currentSort = this.getSortValue();
         this.currentOrder = this.getOrderValue();
+        this.resetGallerySearch();
         this.updateUrlParams({ sort: this.currentSort, order: this.currentOrder });
         this.loadContent();
     }
@@ -350,6 +471,7 @@ class BaseGallery {
         if (page < 1 || page > this.totalPages || page === this.currentPage) return;
 
         this.currentPage = page;
+        this.autoPagingAppend = false;
         this.updateUrlParams({ page });
         await this.loadContent();
         pageTop.scrollTo({ top: 0, behavior: 'smooth' });
@@ -357,6 +479,11 @@ class BaseGallery {
 
     renderPagination() {
         if (!this.elements.pageNav) return;
+
+        if (this.isAutoPagingEnabled()) {
+            this.elements.pageNav.style.display = 'none';
+            return;
+        }
 
         if (this.totalPages <= 1) {
             this.elements.pageNav.style.display = 'none';
@@ -743,6 +870,7 @@ class BaseGallery {
         });
 
         this.updateSelectionModeClass();
+        this.persistSelectedItems();
     }
 
     selectAll() {
@@ -1041,6 +1169,20 @@ class BaseGallery {
                 </div>
             `;
         }).join('');
+
+        this.setupPopularTagNavigation();
+    }
+
+    setupPopularTagNavigation() {
+        if (!this.elements.popularTags || this.elements.grid?.id !== 'gallery-grid') return;
+
+        this.elements.popularTags.querySelectorAll('.popular-tag-name').forEach(link => {
+            link.addEventListener('click', (e) => {
+                if (link.style.pointerEvents === 'none') return;
+                e.preventDefault();
+                this.navigateGallerySearch(link.href);
+            });
+        });
     }
 
     // ==================== Loading State ====================

@@ -82,9 +82,12 @@ def get_or_create_tags(db: Session, tag_names: List[str], category_hints: Option
         seen.add(name)
         unique_names.append(name)
 
+    from ..utils.tag_resolver import resolve_canonical_tag
+
     tags = []
+    seen_ids = set()
     for name in unique_names:
-        tag = db.query(Tag).filter(Tag.name == name).first()
+        tag = resolve_canonical_tag(name, db)
         if not tag:
             category = "general"
             if category_hints and name in category_hints:
@@ -92,8 +95,11 @@ def get_or_create_tags(db: Session, tag_names: List[str], category_hints: Option
             tag = Tag(name=name, post_count=0, category=category)
             db.add(tag)
             db.flush()
+        if tag.id in seen_ids:
+            continue
+        seen_ids.add(tag.id)
         tags.append(tag)
-    
+
     return tags
 
 def _append_tags_to_existing_media(

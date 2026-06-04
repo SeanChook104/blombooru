@@ -181,6 +181,40 @@ span.checked:hover {
 }
 
 /* Gallery styling */
+.gallery-page-break {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.25rem 0 0.5rem;
+}
+
+.gallery-page-break--continued {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color, rgba(128, 128, 128, 0.35));
+}
+
+.gallery-page-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--secondary-text);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.gallery-page-break--continued .gallery-page-label::before {
+    content: '';
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-right: 0.5rem;
+    border-radius: 1px;
+    background: var(--primary-color);
+    vertical-align: middle;
+}
+
 .gallery-item {
     position: relative;
     aspect-ratio: 1;
@@ -898,6 +932,37 @@ span.checked:hover {
     white-space: nowrap;
     flex: 1;
     color: var(--primary-text);
+}
+
+.layer-move-btns {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 1px;
+}
+
+.layer-move-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1rem;
+    padding: 0;
+    border: none;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--secondary-text);
+    cursor: pointer;
+}
+
+.layer-move-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary-color) 15%, transparent);
+    color: var(--primary-text);
+}
+
+.layer-move-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
 }
 
 /* Canvas Floating Controls */

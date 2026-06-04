@@ -17,7 +17,8 @@ from .config import APP_VERSION, settings
 from .database import get_db, init_db, init_engine
 from .models import Media
 from .routes import (admin, ai_tagger, albums, booru_config, booru_import,
-                     danbooru, media, search, sharing, system, tags)
+                     danbooru, media, search, sharing, system, tags,
+                     tags_management)
 from .translations import language_registry, translation_helper
 from .utils.logger import logger
 
@@ -127,6 +128,7 @@ templates.env.globals['is_admin'] = lambda request: request.cookies.get("admin_m
 app.include_router(admin.router)
 app.include_router(media.router)
 app.include_router(tags.router)
+app.include_router(tags_management.router)
 app.include_router(search.router)
 app.include_router(sharing.router)
 app.include_router(albums.router)

@@ -125,9 +125,21 @@ class Album(Base):
 # Update Media model to include albums relationship
 Media.albums = relationship('Album', secondary=blombooru_album_media, back_populates='media')
 
+class CanvasHistory(Base):
+    __tablename__ = 'blombooru_canvas_history'
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Canonical form: unique media ids, sorted ascending, comma-joined.
+    # Stored as a single string so an identical canvas can be deduplicated
+    # with a plain equality lookup.
+    media_ids = Column(Text, nullable=False, index=True)
+    item_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    last_opened_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
 class ApiKey(Base):
     __tablename__ = 'blombooru_api_keys'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     key_hash = Column(String(64), unique=True, nullable=False, index=True)
     key_prefix = Column(String(12), nullable=False)

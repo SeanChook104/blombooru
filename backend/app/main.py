@@ -17,8 +17,8 @@ from .config import APP_VERSION, settings
 from .database import get_db, init_db, init_engine
 from .models import Media
 from .routes import (admin, ai_tagger, albums, booru_config, booru_import,
-                     danbooru, media, search, sharing, system, tags,
-                     tags_management)
+                     canvas_history, danbooru, media, search, sharing, system,
+                     tags, tags_management)
 from .translations import language_registry, translation_helper
 from .utils.logger import logger
 
@@ -137,6 +137,7 @@ app.include_router(danbooru.router)
 app.include_router(system.router)
 app.include_router(booru_import.router)
 app.include_router(booru_config.router)
+app.include_router(canvas_history.router)
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -192,6 +193,14 @@ async def media_page(request: Request, media_id: int, db: Session = Depends(get_
 async def canvas_page(request: Request):
     """Media canvas editor page"""
     return templates.TemplateResponse("canvas.html", {
+        "request": request,
+        "app_name": settings.APP_NAME
+    })
+
+@app.get("/canvas-history", response_class=HTMLResponse)
+async def canvas_history_page(request: Request):
+    """Past canvases page"""
+    return templates.TemplateResponse("canvas_history.html", {
         "request": request,
         "app_name": settings.APP_NAME
     })

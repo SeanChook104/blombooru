@@ -438,9 +438,26 @@ class CanvasEditor {
                     this.addImage(fileUrl, media.filename || `Image ${media.id}`, x, y, { mediaId: media.id });
                 }
             });
+
+            if (items.length) {
+                this.recordCanvasHistory(items.map(media => media.id));
+            }
         } catch (err) {
             console.error('Failed to load media from query params:', err);
         }
+    }
+
+    /**
+     * Log this canvas so it can be reopened later from the Canvas page.
+     * Fire-and-forget: a history failure must never break the canvas.
+     */
+    recordCanvasHistory(mediaIds) {
+        fetch('/api/canvas-history', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ media_ids: mediaIds })
+        }).catch(err => console.error('Failed to record canvas history:', err));
     }
 
     // ==================== Add Image ====================

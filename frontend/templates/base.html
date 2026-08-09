@@ -120,6 +120,12 @@
                                 {{ t('common.albums') }}
                             </a>
                         </li>
+                        <li id="nav-canvas-history-item">
+                            <a href="/canvas-history"
+                                class="block bg border px-3 py-1 hover:border-primary transition-colors {{ 'text-primary' if request.url.path.startswith('/canvas') else 'text' }}">
+                                {{ t('common.canvas') }}
+                            </a>
+                        </li>
                         <li>
                             <a href="/admin"
                                 class="block bg border px-3 py-1 hover:border-primary transition-colors {{ 'text-primary' if request.url.path.startswith('/admin') else 'text' }}">
@@ -197,6 +203,12 @@
                         <a href="/albums"
                             class="btn-dark w-full justify-start px-4 py-2 {{ 'text-primary' if request.url.path.startswith('/albums') or request.url.path.startswith('/album/') else 'text' }}">
                             {{ t('common.albums') }}
+                        </a>
+                    </li>
+                    <li id="nav-canvas-history-item-mobile">
+                        <a href="/canvas-history"
+                            class="btn-dark w-full justify-start px-4 py-2 {{ 'text-primary' if request.url.path.startswith('/canvas') else 'text' }}">
+                            {{ t('common.canvas') }}
                         </a>
                     </li>
                     {% if is_admin(request) %}

@@ -184,7 +184,7 @@ location='desktop') %}
         {% endif %}
         {% if 'canvas' in buttons %}
         <button id="bulk-canvas-btn" class="btn px-3 py-1">
-            Open in Canvas
+            {{ t('common.open_in_canvas') }}
         </button>
         {% endif %}
     </div>
@@ -245,6 +245,42 @@ location='desktop') %}
         <span>{{ t('gallery.auto_paging') }}</span>
     </label>
     <p class="text-secondary text-xs mt-1">{{ t('gallery.auto_paging_hint') }}</p>
+</div>
+{% endif %}
+{% endmacro %}
+
+{# Column count selector (gallery/album grids) #}
+{% macro _column_count_select(suffix='') %}
+<div id="column-count-select{{ suffix }}" class="custom-select js-column-count-select w-full" data-value="auto">
+    <button
+        class="custom-select-trigger w-full flex items-center justify-between gap-3 px-2 py-1 bg border text-xs cursor-pointer hover:border-primary focus:outline-none focus:border-primary transition-colors"
+        type="button">
+        <span class="custom-select-value text">{{ t('gallery.columns_auto') }}</span>
+        {{ _select_arrow() }}
+    </button>
+    <div class="custom-select-dropdown bg border border-primary max-h-60 overflow-y-auto shadow-lg" style="z-index: 50;">
+        <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs transition-colors"
+            data-value="auto">{{ t('gallery.columns_auto') }}</div>
+        {% for n in range(2, 9) %}
+        <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs transition-colors"
+            data-value="{{ n }}">{{ n }}</div>
+        {% endfor %}
+    </div>
+</div>
+{% endmacro %}
+
+{% macro column_count_selector(location='desktop') %}
+{% set suffix = '-mobile' if location == 'mobile' else '' %}
+{% if location == 'mobile' %}
+<div class="surface p-3 mb-4 border block lg:hidden">
+    <h3 class="text-sm font-bold mb-2">{{ t('gallery.columns') }}</h3>
+    {{ _column_count_select(suffix) }}
+</div>
+{% else %}
+<div class="hidden lg:block mb-4">
+    <h3 class="text-sm font-bold mb-3 pb-1 border-b">{{ t('gallery.columns') }}</h3>
+    {{ _column_count_select(suffix) }}
+    <p class="text-secondary text-xs mt-1">{{ t('gallery.columns_hint') }}</p>
 </div>
 {% endif %}
 {% endmacro %}

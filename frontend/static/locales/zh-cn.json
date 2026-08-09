@@ -396,6 +396,19 @@
             "title": "批量预测标签 (WD 标注器)"
         }
     },
+    "canvas_history": {
+        "title": "",
+        "hint": "",
+        "empty": "",
+        "item_count": "",
+        "more_items": "",
+        "view": "",
+        "clear_all": "",
+        "delete_title": "",
+        "delete_message": "",
+        "clear_title": "",
+        "clear_message": ""
+    },
     "common": {
         "cancel": "取消",
         "clear_selection": "清除选择",
@@ -447,6 +460,8 @@
         "add_to_albums": "添加到相册",
         "admin_panel": "管理面板",
         "albums": "相册",
+        "canvas": "",
+        "open_in_canvas": "",
         "all_tags_cleared": "所有标签已成功清除",
         "create_admin_account": "创建管理员账号",
         "custom_buttons": "自定义按钮",
@@ -500,6 +515,9 @@
         "popular_tags": "热门标签",
         "auto_paging": "自动翻页",
         "auto_paging_hint": "滚动到底部附近时加载下一页。",
+        "columns": "",
+        "columns_auto": "",
+        "columns_hint": "",
         "page_section": "第 {page} 页",
         "page_section_total": "第 {page} / {total} 页",
         "quick_filter": "快速过滤",

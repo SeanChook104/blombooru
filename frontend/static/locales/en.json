@@ -396,6 +396,19 @@
             "title": "Bulk Predict Tags (WD Tagger)"
         }
     },
+    "canvas_history": {
+        "title": "Canvas History",
+        "hint": "Canvases you have opened, most recent first.",
+        "empty": "No canvases yet. Select media in the gallery and choose \"Open in Canvas\".",
+        "item_count": "{count} items",
+        "more_items": "+{count} more",
+        "view": "View",
+        "clear_all": "Clear All",
+        "delete_title": "Delete Entry",
+        "delete_message": "Remove this canvas from your history? The media itself is not affected.",
+        "clear_title": "Clear Canvas History",
+        "clear_message": "Remove every entry from your canvas history? The media itself is not affected."
+    },
     "common": {
         "cancel": "Cancel",
         "clear_selection": "Clear Selection",
@@ -447,6 +460,8 @@
         "add_to_albums": "Add to Albums",
         "admin_panel": "Admin Panel",
         "albums": "Albums",
+        "canvas": "Canvas",
+        "open_in_canvas": "Open in Canvas",
         "all_tags_cleared": "All tags cleared successfully",
         "create_admin_account": "Create Admin Account",
         "custom_buttons": "Custom Buttons",
@@ -500,6 +515,9 @@
         "popular_tags": "Popular Tags",
         "auto_paging": "Auto paging",
         "auto_paging_hint": "Load the next page when you scroll near the bottom.",
+        "columns": "Columns",
+        "columns_auto": "Auto",
+        "columns_hint": "Maximum columns to show. Limited by your window width.",
         "page_section": "Page {page}",
         "page_section_total": "Page {page} of {total}",
         "quick_filter": "Quick Filter",

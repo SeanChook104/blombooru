@@ -3,7 +3,10 @@ class AlbumViewer extends BaseGallery {
         super({
             gridSelector: '#album-contents',
             defaultSort: 'uploaded_at',
-            enablePagination: true
+            enablePagination: true,
+            enableAutoPaging: true,
+            // Per-album key so selections don't bleed between albums
+            selectionStorageKey: `albumSelectedIds:${albumId}`
         });
 
         this.albumId = albumId;
@@ -74,7 +77,14 @@ class AlbumViewer extends BaseGallery {
     }
 
     async loadContent() {
-        this.showLoading();
+        if (this.isLoading) return false;
+
+        const appendMode = this.autoPagingAppend && this.currentPage > 1;
+
+        this.isLoading = true;
+        if (!appendMode) {
+            this.showLoading();
+        }
 
         try {
             const params = new URLSearchParams({
@@ -94,7 +104,8 @@ class AlbumViewer extends BaseGallery {
             const data = await response.json();
 
             // Check if page adjustment is needed
-            if (this.adjustPageIfNeeded(data.pages)) {
+            if (this.adjustPageIfNeeded(data.pages) && !appendMode) {
+                this.isLoading = false;
                 return this.loadContent();
             }
 
@@ -103,26 +114,38 @@ class AlbumViewer extends BaseGallery {
             // An album is "visible" if it has media OR it has sub-albums
             const visibleAlbums = allAlbums.filter(a => (a.media_count > 0 || a.children_count > 0));
 
-            // Check if there are visible sub-albums and update sort options
-            const hadSubAlbums = this.hasSubAlbums;
-            this.hasSubAlbums = visibleAlbums.length > 0;
+            // Sub-album state is established by page 1; appended pages must not
+            // re-evaluate it or the sub-album block would disappear mid-scroll.
+            if (!appendMode) {
+                const hadSubAlbums = this.hasSubAlbums;
+                this.hasSubAlbums = visibleAlbums.length > 0;
 
-            if (this.hasSubAlbums && !hadSubAlbums) {
-                this.addSortOption('last_modified', 'Last Modified');
-            } else if (!this.hasSubAlbums && hadSubAlbums) {
-                this.removeSortOption('last_modified');
+                if (this.hasSubAlbums && !hadSubAlbums) {
+                    this.addSortOption('last_modified', 'Last Modified');
+                } else if (!this.hasSubAlbums && hadSubAlbums) {
+                    this.removeSortOption('last_modified');
+                }
             }
 
-            this.renderContents(data);
+            this.renderContents(data, appendMode);
+            this.updateVisibleSelectionState();
 
             // Render pagination
             this.renderPagination();
 
+            return true;
+
         } catch (error) {
             console.error('Error loading contents:', error);
-            this.showError(window.i18n.t('albums.failed_load_album_contents'));
+            if (!appendMode) {
+                this.showError(window.i18n.t('albums.failed_load_album_contents'));
+            }
+            return false;
         } finally {
-            this.hideLoading();
+            this.isLoading = false;
+            if (!appendMode) {
+                this.hideLoading();
+            }
         }
     }
 
@@ -153,7 +176,7 @@ class AlbumViewer extends BaseGallery {
         this.loadContent();
     }
 
-    renderContents(data) {
+    renderContents(data, appendMode = false) {
         const subAlbumsContainer = document.getElementById('sub-albums-container');
         const subAlbumsGrid = document.getElementById('sub-albums-grid');
         const mediaContainer = document.getElementById('media-container');
@@ -162,13 +185,27 @@ class AlbumViewer extends BaseGallery {
 
         if (!subAlbumsGrid || !this.elements.grid) return;
 
-        subAlbumsGrid.innerHTML = '';
-        this.elements.grid.innerHTML = '';
-
-        // 1. Process Sub-albums (only show on first page)
         const allAlbums = data.albums || [];
         const visibleAlbums = allAlbums.filter(a => (a.media_count > 0 || a.children_count > 0));
         const emptyCount = allAlbums.length - visibleAlbums.length;
+
+        // Appending an auto-paged page: only add the new media, leave the
+        // existing grid, sub-albums and headers exactly as they are.
+        if (appendMode) {
+            if (data.media && data.media.length > 0) {
+                this.appendGalleryPageBreak(this.currentPage);
+                data.media.forEach(media => {
+                    this.elements.grid.appendChild(this.createGalleryItem(media, {
+                        checkboxClass: 'album-item-checkbox checkbox',
+                        preserveQueryParams: false
+                    }));
+                });
+            }
+            return;
+        }
+
+        subAlbumsGrid.innerHTML = '';
+        this.elements.grid.innerHTML = '';
 
         // Only show sub-albums on first page
         if (this.currentPage === 1 && visibleAlbums.length > 0) {
@@ -193,6 +230,8 @@ class AlbumViewer extends BaseGallery {
             if (mediaHeader) {
                 mediaHeader.style.display = (this.currentPage === 1 && visibleAlbums.length > 0) ? 'block' : 'none';
             }
+
+            this.appendGalleryPageBreak(this.currentPage);
 
             data.media.forEach(media => {
                 const item = this.createGalleryItem(media, {

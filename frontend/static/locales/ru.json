@@ -396,6 +396,19 @@
             "title": "Массово предсказать теги (WD Tagger)"
         }
     },
+    "canvas_history": {
+        "title": "",
+        "hint": "",
+        "empty": "",
+        "item_count": "",
+        "more_items": "",
+        "view": "",
+        "clear_all": "",
+        "delete_title": "",
+        "delete_message": "",
+        "clear_title": "",
+        "clear_message": ""
+    },
     "common": {
         "cancel": "Отмена",
         "clear_selection": "Очистить выбор",
@@ -447,6 +460,8 @@
         "add_to_albums": "Добавить в альбомы",
         "admin_panel": "Панель администратора",
         "albums": "Альбомы",
+        "canvas": "",
+        "open_in_canvas": "",
         "all_tags_cleared": "Все теги успешно очищены",
         "create_admin_account": "Создать аккаунт администратора",
         "custom_buttons": "Пользовательские комбинации",
@@ -500,6 +515,9 @@
         "popular_tags": "Популярные теги",
         "auto_paging": "Автопрокрутка страниц",
         "auto_paging_hint": "Загружать следующую страницу при прокрутке вниз.",
+        "columns": "",
+        "columns_auto": "",
+        "columns_hint": "",
         "page_section": "Страница {page}",
         "page_section_total": "Страница {page} из {total}",
         "quick_filter": "Быстрый фильтр",

@@ -1,5 +1,25 @@
 const GALLERY_SELECTED_STORAGE_KEY = 'gallerySelectedIds';
 const GALLERY_AUTO_PAGING_STORAGE_KEY = 'galleryAutoPaging';
+const GALLERY_COLUMNS_STORAGE_KEY = 'galleryColumns';
+
+// Grids whose column count the sidebar selector controls.
+const GALLERY_COLUMN_GRID_SELECTORS = [
+    '#gallery-grid',
+    '#album-contents',
+    '#sub-albums-grid',
+    '#albums-grid'
+];
+
+// Mirrors the responsive `grid-cols-*` classes on those grids, so "Auto" and
+// the viewport cap agree with what Tailwind would render on its own.
+const GALLERY_COLUMN_BREAKPOINTS = [
+    { minWidth: 1536, columns: 8 }, // 2xl
+    { minWidth: 1280, columns: 7 }, // xl
+    { minWidth: 1024, columns: 5 }, // lg
+    { minWidth: 768, columns: 4 },  // md
+    { minWidth: 640, columns: 3 },  // sm
+    { minWidth: 0, columns: 2 }
+];
 
 class BaseGallery {
     constructor(options = {}) {
@@ -14,6 +34,11 @@ class BaseGallery {
             enablePagination: true,
             enableRatingFilter: true,
             enableSorting: true,
+            // Pages that render media items and implement append-mode loading opt in
+            enableAutoPaging: false,
+            // sessionStorage key used to keep selection across page navigations.
+            // null disables persistence for this page.
+            selectionStorageKey: null,
             defaultRating: 'explicit',
             defaultSort: 'uploaded_at',
             defaultOrder: 'desc',
@@ -83,15 +108,16 @@ class BaseGallery {
         this.setupDragSelectionGlobalListeners();
         this.loadPersistedSelection();
         this.setupAutoPaging();
+        this.setupColumnSelector();
     }
 
     // ==================== Selection persistence (gallery list) ====================
 
     loadPersistedSelection() {
-        if (!this.elements.grid || this.elements.grid.id !== 'gallery-grid') return;
+        if (!this.elements.grid || !this.options.selectionStorageKey) return;
 
         try {
-            const raw = sessionStorage.getItem(GALLERY_SELECTED_STORAGE_KEY);
+            const raw = sessionStorage.getItem(this.options.selectionStorageKey);
             if (!raw) return;
             JSON.parse(raw).forEach(id => {
                 const numericId = Number(id);
@@ -106,14 +132,14 @@ class BaseGallery {
     }
 
     persistSelectedItems() {
-        if (!this.elements.grid || this.elements.grid.id !== 'gallery-grid') return;
+        if (!this.elements.grid || !this.options.selectionStorageKey) return;
 
         try {
             if (this.selectedItems.size === 0) {
-                sessionStorage.removeItem(GALLERY_SELECTED_STORAGE_KEY);
+                sessionStorage.removeItem(this.options.selectionStorageKey);
             } else {
                 sessionStorage.setItem(
-                    GALLERY_SELECTED_STORAGE_KEY,
+                    this.options.selectionStorageKey,
                     JSON.stringify(Array.from(this.selectedItems))
                 );
             }
@@ -125,15 +151,17 @@ class BaseGallery {
     // ==================== Auto paging ====================
 
     isAutoPagingEnabled() {
+        // Only pages that actually implement append-mode loading may auto-page,
+        // otherwise the global preference would hide pagination on pages that
+        // have no other way to reach page 2.
+        if (!this.options.enableAutoPaging) return false;
         return localStorage.getItem(GALLERY_AUTO_PAGING_STORAGE_KEY) !== 'false';
     }
 
     setupAutoPaging() {
-        if (!this.elements.grid || this.elements.grid.id !== 'gallery-grid') return;
+        if (!this.elements.grid || !this.options.enableAutoPaging) return;
 
         const toggles = document.querySelectorAll('.auto-paging-toggle-input');
-        if (!toggles.length) return;
-
         const enabled = this.isAutoPagingEnabled();
         toggles.forEach(toggle => {
             toggle.checked = enabled;
@@ -173,14 +201,124 @@ class BaseGallery {
         if (this.currentPage >= this.totalPages) return;
 
         this.autoPagingLoadingNext = true;
+        const previousPage = this.currentPage;
         this.currentPage += 1;
         this.autoPagingAppend = true;
 
         try {
-            await this.loadContent();
+            // loadContent() returns false when it bails out (another load in
+            // flight). Roll the page counter back so this page isn't skipped.
+            const loaded = await this.loadContent();
+            if (loaded === false) {
+                this.currentPage = previousPage;
+            }
+        } catch (error) {
+            this.currentPage = previousPage;
+            console.error('Auto-paging load failed:', error);
         } finally {
             this.autoPagingLoadingNext = false;
         }
+    }
+
+    // ==================== Column count ====================
+
+    /**
+     * The stored preference: 'auto', or a column count as a number.
+     */
+    getColumnPreference() {
+        const raw = localStorage.getItem(GALLERY_COLUMNS_STORAGE_KEY);
+        if (!raw || raw === 'auto') return 'auto';
+        const parsed = parseInt(raw, 10);
+        if (!Number.isFinite(parsed) || parsed < 2 || parsed > 8) return 'auto';
+        return parsed;
+    }
+
+    /**
+     * How many columns the current viewport would show on its own.
+     * Used as the cap: asking for 8 on a window that fits 4 gives 4.
+     */
+    naturalColumnCount() {
+        const width = window.innerWidth;
+        const match = GALLERY_COLUMN_BREAKPOINTS.find(bp => width >= bp.minWidth);
+        return match ? match.columns : 2;
+    }
+
+    applyColumnPreference() {
+        const pref = this.getColumnPreference();
+        const columns = pref === 'auto' ? null : Math.min(pref, this.naturalColumnCount());
+
+        GALLERY_COLUMN_GRID_SELECTORS.forEach(selector => {
+            document.querySelectorAll(selector).forEach(grid => {
+                if (columns === null) {
+                    // Hand control back to the responsive Tailwind classes.
+                    grid.style.removeProperty('grid-template-columns');
+                } else {
+                    grid.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+                }
+            });
+        });
+    }
+
+    setupColumnSelector() {
+        const selects = document.querySelectorAll('.js-column-count-select');
+        const stored = this.getColumnPreference();
+
+        selects.forEach(element => {
+            const instance = new CustomSelect(element);
+            instance.setValue(String(stored));
+
+            element.addEventListener('change', (e) => {
+                const value = e.detail.value;
+                localStorage.setItem(GALLERY_COLUMNS_STORAGE_KEY, value);
+
+                // Keep the desktop/mobile duplicates in sync
+                selects.forEach(other => {
+                    if (other !== element && other.dataset.value !== value) {
+                        other._customSelect?.setValue(value);
+                    }
+                });
+
+                this.applyColumnPreference();
+            });
+
+            element._customSelect = instance;
+        });
+
+        // Re-evaluate the cap when the window is resized.
+        let resizeTimer = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => this.applyColumnPreference(), 100);
+        });
+
+        this.applyColumnPreference();
+    }
+
+    /**
+     * Insert a "Page N" separator above the items of an auto-paged page.
+     * Shared by the gallery and album views.
+     */
+    appendGalleryPageBreak(pageNum, grid = this.elements.grid) {
+        if (!grid) return;
+        if (!this.isAutoPagingEnabled()) return;
+        if (grid.querySelector(`.gallery-page-break[data-page="${pageNum}"]`)) return;
+
+        const breakEl = document.createElement('div');
+        breakEl.className = 'gallery-page-break';
+        if (pageNum > 1) {
+            breakEl.classList.add('gallery-page-break--continued');
+        }
+        breakEl.dataset.page = String(pageNum);
+
+        const label = document.createElement('span');
+        label.className = 'gallery-page-label';
+        const total = this.totalPages || pageNum;
+        label.textContent = total > 1
+            ? window.i18n.t('gallery.page_section_total', { page: pageNum, total })
+            : window.i18n.t('gallery.page_section', { page: pageNum });
+        breakEl.appendChild(label);
+
+        grid.appendChild(breakEl);
     }
 
     resetGallerySearch() {
@@ -743,7 +881,7 @@ class BaseGallery {
             // Logic 1: Fill the current page
             visibleItems.forEach(item => {
                 const id = parseInt(item.dataset.id);
-                const checkbox = item.querySelector('.checkbox, .album-item-checkbox');
+                const checkbox = item.querySelector('.select-checkbox');
 
                 if (checkbox && !checkbox.checked) {
                     checkbox.checked = true;
@@ -772,7 +910,7 @@ class BaseGallery {
                 const id = parseInt(item.dataset.id);
                 this.selectedItems.delete(id);
                 item.classList.remove('selected');
-                const checkbox = item.querySelector('.checkbox, .album-item-checkbox');
+                const checkbox = item.querySelector('.select-checkbox');
                 if (checkbox) checkbox.checked = false;
             });
         } else {
@@ -792,21 +930,38 @@ class BaseGallery {
         btn.disabled = true;
 
         try {
+            // Build params from live instance state, not the URL: the rating
+            // filter and custom filter live in localStorage, so a URL-derived
+            // query would select a different set than what is on screen.
+            const params = new URLSearchParams();
+            params.set('limit', '100000'); // Fetch "all" (reasonable limit)
+            params.set('rating', this.currentRating);
+            params.set('sort', this.getSortValue());
+            params.set('order', this.getOrderValue());
+
+            const searchQuery = new URLSearchParams(window.location.search).get('q');
+            let combinedQuery = searchQuery || '';
+            if (this.currentCustomFilter) {
+                combinedQuery = combinedQuery
+                    ? `${combinedQuery} ${this.currentCustomFilter}`
+                    : this.currentCustomFilter;
+            }
+
             // Determine endpoint based on current page context
-            let endpoint = '/api/search'; // Default
             const path = window.location.pathname;
+            let endpoint;
 
             if (path.startsWith('/album/')) {
                 const id = path.split('/')[2];
                 endpoint = `/api/albums/${id}/contents`;
-            } else if (path === '/' || path === '/index.html') {
+                if (combinedQuery) params.set('q', combinedQuery);
+            } else if (combinedQuery) {
                 endpoint = '/api/search';
+                params.set('q', combinedQuery);
+            } else {
+                // Browse mode uses /api/media/, matching Gallery.loadContent()
+                endpoint = '/api/media/';
             }
-
-            // Build params based on current URL (preserves filters, sorts, etc.)
-            const params = new URLSearchParams(window.location.search);
-            params.set('limit', '100000'); // Fetch "all" (reasonable limit)
-            params.delete('page');
 
             const res = await fetch(`${endpoint}?${params.toString()}`, {
                 credentials: 'include'
@@ -834,7 +989,7 @@ class BaseGallery {
                 const id = parseInt(item.dataset.id);
                 if (this.selectedItems.has(id)) {
                     item.classList.add('selected');
-                    const checkbox = item.querySelector('.checkbox, .album-item-checkbox');
+                    const checkbox = item.querySelector('.select-checkbox');
                     if (checkbox) checkbox.checked = true;
                 }
             });

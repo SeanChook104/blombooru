@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import loading_indicator, page_navigation, page_jump_modal %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-4">
+    <div class="flex items-center justify-between mb-4 pb-2 border-b">
+        <h1 class="text-lg font-bold">{{ t('canvas_history.title') }}</h1>
+        <button id="clear-canvas-history-btn" class="btn px-3 py-1 text-xs" style="display: none;">
+            {{ t('canvas_history.clear_all') }}
+        </button>
+    </div>
+
+    <p class="text-secondary text-xs mb-4">{{ t('canvas_history.hint') }}</p>
+
+    <div id="canvas-history-list" class="flex flex-col gap-2"></div>
+
+    {{ loading_indicator() }}
+    {{ page_navigation() }}
+</div>
+
+{{ page_jump_modal() }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/base-gallery.js?v={{ cache_buster }}"></script>
+<script src="/static/js/canvas-history.js?v={{ cache_buster }}"></script>
+{% endblock %}

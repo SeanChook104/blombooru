@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 {% from "components/macros.html" import rating_filter, sorting_options, bulk_actions, page_jump_modal,
-loading_indicator, page_navigation, popular_tags_section, auto_paging_toggle, sidebar_start, sidebar_end %}
+loading_indicator, page_navigation, popular_tags_section, auto_paging_toggle, column_count_selector, sidebar_start,
+sidebar_end %}
 
 {% block content %}
 <div class="container mx-auto px-4 py-4">
     {{ rating_filter('mobile', mode=sidebar_filter_mode, custom_buttons=sidebar_custom_buttons) }}
     {{ sorting_options(default_sort=default_sort, default_order=default_order, location='mobile') }}
     {{ auto_paging_toggle('mobile') }}
+    {{ column_count_selector('mobile') }}
 
     <div class="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-4 gap-4">
         <!-- Gallery Grid -->
@@ -26,6 +28,7 @@ loading_indicator, page_navigation, popular_tags_section, auto_paging_toggle, si
         {{ rating_filter('desktop', mode=sidebar_filter_mode, custom_buttons=sidebar_custom_buttons) }}
         {{ sorting_options(default_sort=default_sort, default_order=default_order) }}
         {{ auto_paging_toggle() }}
+        {{ column_count_selector() }}
         {{ popular_tags_section() }}
         {{ sidebar_end() }}
     </div>

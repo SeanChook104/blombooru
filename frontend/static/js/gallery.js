@@ -2,7 +2,9 @@ class Gallery extends BaseGallery {
     constructor() {
         super({
             gridSelector: '#gallery-grid',
-            defaultSort: 'uploaded_at'
+            defaultSort: 'uploaded_at',
+            enableAutoPaging: true,
+            selectionStorageKey: GALLERY_SELECTED_STORAGE_KEY
         });
 
         if (this.elements.grid) {
@@ -26,7 +28,7 @@ class Gallery extends BaseGallery {
     }
 
     async loadContent() {
-        if (this.isLoading) return;
+        if (this.isLoading) return false;
 
         const appendMode = this.autoPagingAppend && this.currentPage > 1;
 
@@ -95,39 +97,20 @@ class Gallery extends BaseGallery {
                 this.renderPagination();
             }
 
+            return true;
+
         } catch (error) {
             console.error('Error loading gallery:', error);
             if (!appendMode) {
                 this.showError(error.message);
             }
+            return false;
         } finally {
             this.isLoading = false;
             if (!appendMode) {
                 this.hideLoading();
             }
         }
-    }
-
-    appendGalleryPageBreak(pageNum) {
-        if (!this.isAutoPagingEnabled()) return;
-        if (this.elements.grid.querySelector(`.gallery-page-break[data-page="${pageNum}"]`)) return;
-
-        const breakEl = document.createElement('div');
-        breakEl.className = 'gallery-page-break';
-        if (pageNum > 1) {
-            breakEl.classList.add('gallery-page-break--continued');
-        }
-        breakEl.dataset.page = String(pageNum);
-
-        const label = document.createElement('span');
-        label.className = 'gallery-page-label';
-        const total = this.totalPages || pageNum;
-        label.textContent = total > 1
-            ? window.i18n.t('gallery.page_section_total', { page: pageNum, total })
-            : window.i18n.t('gallery.page_section', { page: pageNum });
-        breakEl.appendChild(label);
-
-        this.elements.grid.appendChild(breakEl);
     }
 
     renderItems(items, pageNum = this.currentPage) {

@@ -396,6 +396,19 @@
             "title": "Massförutsäg taggar (WD Tagger)"
         }
     },
+    "canvas_history": {
+        "title": "",
+        "hint": "",
+        "empty": "",
+        "item_count": "",
+        "more_items": "",
+        "view": "",
+        "clear_all": "",
+        "delete_title": "",
+        "delete_message": "",
+        "clear_title": "",
+        "clear_message": ""
+    },
     "common": {
         "cancel": "Avbryt",
         "clear_selection": "Rensa urval",
@@ -447,6 +460,8 @@
         "add_to_albums": "Lägg till i album",
         "admin_panel": "Adminpanel",
         "albums": "Album",
+        "canvas": "",
+        "open_in_canvas": "",
         "all_tags_cleared": "Alla taggar rensade",
         "create_admin_account": "Skapa administratörskonto",
         "custom_buttons": "Anpassade knappar",
@@ -500,6 +515,9 @@
         "popular_tags": "Populära taggar",
         "auto_paging": "Automatisk sidväxling",
         "auto_paging_hint": "Ladda nästa sida när du scrollar nära botten.",
+        "columns": "",
+        "columns_auto": "",
+        "columns_hint": "",
         "page_section": "Sida {page}",
         "page_section_total": "Sida {page} av {total}",
         "quick_filter": "Snabbfilter",

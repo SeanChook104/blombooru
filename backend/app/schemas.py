@@ -174,6 +174,9 @@ class AlbumListResponse(AlbumBase):
 class MediaIds(BaseModel):
     media_ids: List[int]
 
+class CanvasHistoryCreate(BaseModel):
+    media_ids: List[int]
+
 class ApiKeyCreate(BaseModel):
     name: Optional[str] = None
 
